@@ -174,4 +174,14 @@ simulateData <- function(n, S, S_star, M, N, K,
                     lambda_prior = lambda_start
   )
 
+  params <- list(
+    beta_z = beta_z_true,
+    beta_theta = beta_theta_true,
+    beta_w = beta_w_true,
+    logl = logl_true
+  )
+
+  list("stan_data" = stan_data,
+       "params" = params)
+
 }
