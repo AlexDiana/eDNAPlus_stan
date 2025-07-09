@@ -12,17 +12,21 @@ setwd("C:/Users/Alex/Google Drive/R Folder/Lecturership/ednaplus")
 source(here("Code","function.R"))
 
 # data settings
-n <- 100
+n_s <- 2 # sites
+t <- 5 # time points
+L <- 10 # locations per site
+di <- rexp(n * l, rate = 1) # distance from source
+n <- n * t * L
+
 S <- 20
 S_star <- 1
 M <- rep(2, n)
 N <- sum(M)
 K <- rep(2, N)
-ncov_z <- 1
 ncov_theta <- 2
 
 # parameters
-tau_true <- rep(1, S)
+tau_true <- rep(.2, S)
 phi_true <- rep(1, S)
 sigma_true <- rep(1, S)
 beta0_theta_true <- rep(0, S)
@@ -33,8 +37,9 @@ q_true <- c(rep(.05, S), rep(1, S_star))
 pi0_true <- .95
 lambda0_true <- 7
 
-list_simdata <- simulateData(n, S, S_star, M, N, K,
-                          ncov_z, ncov_theta,
+list_simdata <- simulateData(n_s, t, L, di,
+                             S, S_star, M, N, K,
+                          ncov_theta,
                           tau_true, sigma_true, phi_true, beta0_theta_true,
                           lambda_true, p_true, q_true,
                           sigma_u_true, pi0_true, lambda0_true)
@@ -62,21 +67,27 @@ results_stan <- rstan::vb(
 
 matrix_results <- as.matrix(results_stan)
 
-# beta_z
+# effect of distance
 {
   beta_z_results <- matrix_results %>%
-    as.data.frame %>%
-    select(starts_with("beta_z")) %>%
+    as.data.frame
+
+  texts <- colnames(beta_z_results)
+  pattern <- sprintf("\\[%d,", n_s + t)
+  selected <- grepl(pattern, texts) & grepl("beta_z", texts)
+
+  beta_z_results <- beta_z_results[,selected] %>%
     apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
     as.data.frame
 
-  beta_z_results$True <- as.vector(params$beta_z)
-
+  beta_z_results$True <- as.vector(params$beta_z[7,])
 
   ggplot(beta_z_results, aes(x = 1:nrow(beta_z_results),
                              y = True,
                              ymin = `2.5%`,
-                             ymax = `97.5%`)) + geom_errorbar() + geom_point()
+                             ymax = `97.5%`)) + geom_errorbar() + geom_point() +
+    scale_x_continuous(breaks = 1:S)
+
 }
 
 # ------

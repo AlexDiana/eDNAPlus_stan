@@ -2,22 +2,39 @@
 logistic <- function(x) 1 / (1 + exp(-x))
 
 
-simulateData <- function(n, S, S_star, M, N, K,
-                         ncov_z, ncov_theta,
+simulateData <- function(n_s, t, l, di,
+                         S, S_star, M, N, K,
+                         ncov_theta,
                          tau, sigma, phi, beta0_theta,
                          lambda, p, q, sigma_u, pi0, lambda0){
 
 
+  n <- n_s * t * l
   N2 <- sum(K)
   im_idx <- rep(1:n, M)
 
   sumM <- c(0, cumsum(M)[-n])
   sumK <- c(0, cumsum(K)[-N])
 
-  X_z <- matrix(rnorm(n * ncov_z), n, ncov_z)
+  X_z_settings <-
+    data.frame(Location = rep(1:n_s, each = t * l),
+               Time = rep(rep(1:t, each = l), n_s),
+               Distance = di)
+
+  X_z <- model.matrix(~ factor(Location) + factor(Time) + Distance - 1, X_z_settings)
+
+  ncov_z <- ncol(X_z)
+
+  beta_z_true <-
+    rbind(
+      matrix(rnorm(n_s * S, sd = 1), n_s, S), # location effect
+      matrix(rnorm((t-1) * S, sd = 1), t-1, S),
+      sample(c(-1,0), S, replace = T)
+    )
+
   X_theta <- matrix(rnorm(N * ncov_theta), N, ncov_theta)
 
-  beta_z_true <- matrix(sample(c(-1,1), ncov_z * S, replace = T), ncov_z, S)
+  # beta_z_true <- matrix(sample(c(-1,1,0), ncov_z * S, replace = T), ncov_z, S)
   beta_theta0_true <- rep(3, S)
   beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = T), ncov_theta, S)
   beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = T), ncov_theta, S)
