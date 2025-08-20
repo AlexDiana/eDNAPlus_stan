@@ -35,7 +35,6 @@ simulateData <- function(n_s, t, l, di,
   X_theta <- matrix(rnorm(N * ncov_theta), N, ncov_theta)
 
   # beta_z_true <- matrix(sample(c(-1,1,0), ncov_z * S, replace = T), ncov_z, S)
-  beta_theta0_true <- rep(3, S)
   beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = T), ncov_theta, S)
   beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = T), ncov_theta, S)
 

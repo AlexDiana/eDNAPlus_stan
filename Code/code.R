@@ -15,8 +15,8 @@ source(here("Code","function.R"))
 n_s <- 2 # sites
 t <- 5 # time points
 L <- 10 # locations per site
-di <- rexp(n * l, rate = 1) # distance from source
-n <- n * t * L
+di <- rexp(n_s * L, rate = 1) # distance from source
+n <- n_s * t * L
 
 S <- 20
 S_star <- 1
