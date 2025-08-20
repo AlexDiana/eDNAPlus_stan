@@ -11,7 +11,7 @@ options(mc.cores = parallel::detectCores())
 
 source(here("Code","function_pb.R"))
 
-cfvars = read.csv("../NatureAir/output/allsitevars_CF.csv")
+cfvars = read.csv("allsitevars_CF.csv")
 #remove bat roost & visit that hasn't happpened yet
 cfvars = cfvars %>% filter(Date < Sys.time()) %>% filter(Name != 'Bat roost')
 # add technical replicates to dataset

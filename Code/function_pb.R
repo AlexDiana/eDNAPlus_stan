@@ -1,3 +1,7 @@
+
+logistic <- function(x) 1 / (1 + exp(-x))
+
+
 # modifying the simulate data function to incorportate my existing data
 
 # this function takes in a list of parameters:
@@ -33,7 +37,9 @@ simulateData <- function(data, n_s, t, L, n_t,
   # Build design matrix from real cfvars
   # Do i need to include temporal replicates in this matrix?
   data_sub = data %>% group_by(Name,Visit) %>% filter(row_number() == 1)
-  X_z <- model.matrix(~ factor(Name) + factor(Visit) + dist_m_scale - 1, data = data_sub)
+  data_sub$Visit <- scale(data_sub$Visit)
+  # X_z <- model.matrix(~ factor(Name) + factor(Visit) + dist_m_scale - 1, data = data_sub)
+  X_z <- model.matrix(~ factor(Name) + Visit + dist_m_scale - 1, data = data_sub)
   ncov_z = ncol(X_z)
 
   # Choose which covariates to include in detection
@@ -81,14 +87,14 @@ simulateData <- function(data, n_s, t, L, n_t,
                            X_theta[] %*% beta_theta_true + #matrix of covariate effects on each species in each sample
                            logl_true[im_idx,] * matrix(phi, N, S, byrow = TRUE))
   # theta_true represents occupancy probability of each species in each sample, before technical-replicate noise is added.
-  delta_true <- t(sapply(1:n_ecol, function(i) {
+  delta_true <- t(sapply(1:N, function(i) {
     sapply(1:S, function(s) rbinom(1, 1, theta_true[i, s]))
   }))
   # delta_true represents actual presence absence of each species in each sample
 
   # --- Latent expression values ---
   # X_theta[] %*% beta_w_true is estimating how much the covariates impact DETECTION
-  v_true <- X_theta[] %*% beta_w_true + logl_true[im_idx, ] + sapply(1:S, function(s) rnorm(N, sd = sigma[s]))
+  v_true <- X_theta %*% beta_w_true + logl_true[im_idx, ] + sapply(1:S, function(s) rnorm(N, sd = sigma[s]))
   # This adds species specific noise to each sample to simulate observation noise.
   v_true[delta_true == 0] <- NA
   # remove noise from species that are absent
@@ -115,9 +121,11 @@ simulateData <- function(data, n_s, t, L, n_t,
             if (cimk == 1) {
               lambda_simk <- exp(lambda[s] + v_true[i, s] + o_true[i] + u_true[sumK[sumM[i] + m] + k])
               yimk_true[sumK[sumM[i] + m] + k, s] <- rpois(1, lambda_simk) #generate read count
+
             } else {
               yimk_true[sumK[sumM[i] + m] + k, s] <- rbinom(1, 1, 1 - pi0) * rpois(1, lambda0) #simulate occasional false positives
             }
+
           } else {
             # spike-in species
             cimk <- rbinom(1, 1, p[s])
@@ -152,6 +160,7 @@ simulateData <- function(data, n_s, t, L, n_t,
                     sumK = sumK,
                     S = S,
                     S_star = S_star,
+                    y = yimk_true,
                     logy1 = logy1,
                     a_sigma0 = 1,
                     b_sigma0 = 1,
