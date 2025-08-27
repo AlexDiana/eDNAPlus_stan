@@ -12,7 +12,7 @@ data {
   // samples per site
   int<lower = 0> M[n];
   int<lower = 0> sumM[n];
-  int<lower = 0> im_idx[N2 ];
+  // int<lower = 0> im_idx[N2 ];
   // sample-level detection covariates
   int<lower = 0> ncov_theta;
   matrix[N, ncov_theta] X_theta;
