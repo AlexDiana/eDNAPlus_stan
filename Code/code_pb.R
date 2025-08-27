@@ -12,7 +12,7 @@ options(mc.cores = parallel::detectCores())
 source(here("Code","function_pb.R"))
 
 
-cfvars = read.csv("../NatureAir/output/allsitevars_CF.csv")
+cfvars = read.csv(here("Data","allsitevars_CF.csv"))
 #remove bat roost & visit that hasn't happpened yet
 cfvars = cfvars %>% filter(Date < Sys.time()) %>% filter(Name != 'Bat roost')
 # add technical replicates to dataset
@@ -21,7 +21,7 @@ cfvars = cfvars %>% filter(Date < Sys.time()) %>% filter(Name != 'Bat roost')
 
 # scale the covariates.
 # scale distance
-cfvars$dist_m_scale = scale(cfvars$dist_m)[1]
+cfvars$dist_m_scale = scale(cfvars$dist_m)#[1]
 
 # data settings
 n_s <- 1 # sites
@@ -66,18 +66,35 @@ params <- list_simdata$params
 
 stan_model_compiled <- stan_model(file = here("Code","code.stan"))
 
-results_stan <- rstan::vb(
-  stan_model_compiled,
-  data = stan_data,
-  algorithm = "meanfield",
-  pars = c("beta_z", "beta_theta","logl","o_im","v_im","lambda",
-           "sigma0","sigma","sigma1","p","phi"
-  ),
-  # init = init_fun,
-  iter = 15000,
-  # elbo_samples = 500,
-  tol_rel_obj = 0.00001,
-  output_samples = 500)
+
+sampling <- F
+
+if(sampling){
+  results_stan <-
+    rstan::sampling(
+      stan_model_compiled,
+      data = stan_data,
+      pars = c("beta_z", "beta_theta","logl","v_im","lambda",
+               "sigma0","sigma","sigma1","p","phi"
+      ),
+      # init = init_fun,
+      chains = 1,
+      iter = 15000)
+} else {
+  results_stan <-
+    rstan::vb(
+      stan_model_compiled,
+      data = stan_data,
+      pars = c("beta_z", "beta_theta","logl","v_im","lambda",
+               "sigma0","sigma","sigma1","p","phi"
+      ),
+      # init = init_fun,
+      algorithm = "meanfield",
+      iter = 15000,
+      # elbo_samples = 500,
+      tol_rel_obj = 0.00001,
+      output_samples = 500)
+}
 
 # RESULTS --------
 
@@ -111,41 +128,43 @@ matrix_results <- as.matrix(results_stan)
 
 # map of DNA biomass
 {
-logl_results = matrix_results %>%
-  as.data.frame()
+  logl_results = matrix_results %>%
+    as.data.frame()
 
-texts <- colnames(logl_results)
-loglsel <- grepl('logl', texts)
-# for each species, there are 76 estimates of logl
-# this will be in the order of 1-19 for visit 1, visit 2 etc, or visit 1-4 for site 1, site 2 etc.
+  texts <- colnames(logl_results)
+  loglsel <- grepl('logl', texts)
+  # for each species, there are 76 estimates of logl
+  # this will be in the order of 1-19 for visit 1, visit 2 etc, or visit 1-4 for site 1, site 2 etc.
 
-logl_results = logl_results[,loglsel] %>%
-  apply(., 2, function(x) c(
-    mean = mean(x),
-    quantile(x, probs = c(0.025, 0.975)))) %>% t %>%
-  as.data.frame()
-
-
-logl_results$species = rep(1:3, each = 76)
-cfvars_sub = cfvars %>% group_by(Name,Visit) %>% filter(row_number() == 1)
-#merge cfvarssub with loglresults (each needs to repeat)
-cfvars_species = do.call(rbind, replicate(3,cfvars_sub, simplify = FALSE))
-logl_results = cbind(logl_results, cfvars_species)
+  logl_results = logl_results[,loglsel] %>%
+    apply(., 2, function(x) c(
+      mean = mean(x),
+      quantile(x, probs = c(0.025, 0.975)))) %>% t %>%
+    as.data.frame()
 
 
-library(sf)
+  logl_results$species = rep(1:S, each = n_s * t * L)
+  cfvars_sub = cfvars %>% group_by(Name,Visit) %>% filter(row_number() == 1)
+  #merge cfvarssub with loglresults (each needs to repeat)
+  cfvars_species = do.call(rbind, replicate(3,cfvars_sub, simplify = FALSE))
+  logl_results = cbind(logl_results, cfvars_species)
 
-logl_sf = st_as_sf(logl_results, coords = c("Longitude", "Latitude"), crs = 4326)
 
-ggplot(data = logl_sf) +
-  geom_sf(aes(size = mean), alpha = 0.6, colour = 'grey') +
-  theme_minimal() + facet_grid(species ~ Visit)
+  library(sf)
+
+  logl_sf = st_as_sf(logl_results, coords = c("Longitude", "Latitude"), crs = 4326)
+
+  ggplot(data = logl_sf) +
+    geom_sf(aes(size = mean), alpha = 0.6, colour = 'grey') +
+    theme_minimal() + facet_grid(species ~ Visit)
 }
 
 # plot effect of distance over time
-ggplot(data = logl_sf, aes(x = dist_m, y = mean, ymax = `97.5%`, ymin = `2.5%`, group = as.factor(Visit), fill = as.factor(Visit), colour = as.factor(Visit))) +
+ggplot(data = logl_sf, aes(x = dist_m, y = mean, ymax = `97.5%`, ymin = `2.5%`,
+                           group = as.factor(Visit), fill = as.factor(Visit),
+                           colour = as.factor(Visit))) +
   geom_smooth() +
-  facet_wrap(species~ Visit)
+  facet_wrap(species ~ Visit)
 
 
 

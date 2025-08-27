@@ -144,6 +144,8 @@ simulateData <- function(data, n_s, t, L,
   logy1 <- log(yimk_true + 1)
   lambda_start <- log(apply(yimk_true, 2, function(x) mean(x[x > 10])))
 
+  biomassInSample <- as.numeric(apply(delta_true, 1, sum) > 0)
+
   # --- Output for Stan ---
   stan_data <- list(n = n_ecol,
                     ncov_z = ncov_z,
@@ -154,6 +156,7 @@ simulateData <- function(data, n_s, t, L,
                     sumM = sumM,
                     ncov_theta = ncov_theta,
                     X_theta = X_theta[im_idx, ],
+                    o_im = o_true,
                     K = K,
                     im_idx = im_idx,
                     sumK = sumK,
@@ -161,6 +164,7 @@ simulateData <- function(data, n_s, t, L,
                     S_star = S_star,
                     y = yimk_true,
                     logy1 = logy1,
+                    biomassInSample = biomassInSample,
                     a_sigma0 = 1,
                     b_sigma0 = 1,
                     a_sigma1 = 0.1,

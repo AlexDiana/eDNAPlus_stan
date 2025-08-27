@@ -21,6 +21,7 @@ data {
   int<lower = 1> K[N];
   int<lower = 0> sumK[N];
 
+
   // number of species
   int<lower = 0> S;
   // number of spike ins
@@ -28,8 +29,10 @@ data {
 
   // survey level information
   matrix[N2, S + S_star] logy1;
+  vector[N] o_im; // offset
   // int logy_na[N2, S];
 
+  int<lower = 0> biomassInSample[N];
   // int delta[N, S];
 
   // priors
@@ -57,7 +60,7 @@ parameters {
   matrix[n, S] logl;
   matrix[N, S] v_im;
   vector[N2] u_imk;
-  vector[N] o_im; // offset
+
 
   real<lower = 0> tau[S];
   real<lower = 0> sigma[S];
@@ -127,7 +130,6 @@ model {
   q ~ beta(a_q, b_q);
   sigma1 ~ gamma(a_sigma1, b_sigma1);
 
-  o_im ~ normal(0, 10);
   u_imk ~ normal(0, 10);
 
   // likelihood of logl
@@ -159,79 +161,37 @@ model {
   }
 
 
-  ////////// precomputation of lambda_s /////////////////////////////////////////////////////
-
-  // matrix[N2, S] lambda_simk = rep_matrix(lambda[1:S]', N2) +
-    //   rep_matrix(o_im[im_idx], S) +
-    //   v_im[im_idx, 1:S];
-
-  // matrix[N2, S] lambda_simk;
-  //
-    // for(s in 1:S){
-      //
-        //   for (i in 1:n) {
-          //
-            //     for(m in 1:M[i]){
-              //
-                //       for(k in 1:K[sumM[i] + m]){
-                  //
-                    //         lambda_simk[sumK[sumM[i] + m] + k,s] = lambda[s] + o_im[sumM[i] + m] + v_im[sumM[i] + m,s];// + u_imk[sumK[sumM[i] + m] + k];
-                    //         // real lambda_simk = lambda[s] + o_im[sumM[i] + m] + v_im[sumM[i] + m,s] + u_imk[sumK[sumM[i] + m] + k];
-                    //
-                      //       }
-              //     }
-          //   }
-      // }
-
-  // precomputation of individual likelihoods
-
-  // matrix[N2, S] logpyc1_precomp;
-  // for (i in 1:N2) {
-    //   for (s in 1:S) {
-      //     logpyc1_precomp[i, s] = normal_lpdf(logy1[i,s] | lambda_simk[i, s], sigma1[s]);
-      //   }
-    // }
-  //
-    // matrix[N2, S + S_star] logpyc0_precomp;
-  // for (i in 1:N2) {
-    //   for (s in 1:(S + S_star)) {
-      //     logpyc0_precomp[i, s] =
-        //     log_sum_exp(
-          //       log(pi0) + normal_lpdf(logy1[i,s] | log(1), .00001),
-          //       log(1 - pi0) + normal_lpdf(logy1[i,s] | 0, sigma0)
-          //       );
-      //   }
-    // }
-
 
   /////////// loglikelihood ////////////////////////
 
-    for(s in 1:S){
+  for(s in 1:S){
 
-      for (i in 1:n) {
+    for (i in 1:n) {
 
-        for(m in 1:M[i]){
+      for(m in 1:M[i]){
 
-          // log probability of y given delta = 0
-          log_p_ydelta0 = 0;
+        // log probability of y given delta = 0
+        log_p_ydelta0 = 0;
 
-          for(k in 1:K[sumM[i] + m]){
+        for(k in 1:K[sumM[i] + m]){
 
-            log_p_ydelta0 +=
-              // logpyc0_precomp[sumK[sumM[i] + m] + k, s];
-            log_sum_exp(
-              log(pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | log(1), .00001),
-              // log(pi0) + logy1_lpdf_0[sumK[sumM[i] + m] + k,s],
-              // log(1 - pi0) + logy1_lpdf_1[sumM[i] + m] + k,s]
-log(1 - pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | 0, sigma0)
+          log_p_ydelta0 +=
+          // logpyc0_precomp[sumK[sumM[i] + m] + k, s];
+          log_sum_exp(
+            log(pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | log(1), .00001),
+            // log(pi0) + logy1_lpdf_0[sumK[sumM[i] + m] + k,s],
+            // log(1 - pi0) + logy1_lpdf_1[sumM[i] + m] + k,s]
+            log(1 - pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | 0, sigma0)
             );
 
-          }
+        }
 
-          // log_p_ydelta0 = sum(logpyc0_precomp[(sumK[sumM[i] + m] + 1):(sumK[sumM[i] + m] + K[sumM[i] + m]), s]);
+        // log_p_ydelta0 = sum(logpyc0_precomp[(sumK[sumM[i] + m] + 1):(sumK[sumM[i] + m] + K[sumM[i] + m]), s]);
 
-          // log probability of y given delta = 1
-          log_p_ydelta1 = 0;
+        // log probability of y given delta = 1
+        log_p_ydelta1 = 0;
+
+        if(biomassInSample[sumM[i] + m]){
 
           for(k in 1:K[sumM[i] + m]){
 
@@ -242,67 +202,74 @@ log(1 - pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | 0, sigma0)
             real logpyc1 = normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | lambda_simk, sigma1[s]);
 
             real logpyc0 =
-              log_sum_exp(
-                log(pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | log(1), .00001),
-                log(1 - pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | 0, sigma0)
+            log_sum_exp(
+              log(pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | log(1), .00001),
+              log(1 - pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | 0, sigma0)
               );
 
-            log_p_ydelta1 +=
+              log_p_ydelta1 +=
               log_sum_exp(
                 logpyc1 + log(p[s]),
                 // logpyc1_precomp[sumK[sumM[i] + m] + k, s] + log(p[s]),
                 logpyc0 + log(1 - p[s])
                 // logpyc0_precomp[sumK[sumM[i] + m] + k, s] + log(1 - p[s])
-              );
+                );
 
           }
 
-          target += log_sum_exp(
-            log_theta[sumM[i] + m,s] + log_p_ydelta1,
-            log1m_theta[sumM[i] + m,s] + log_p_ydelta0);
+        } else {
+
+          log_p_ydelta1 = 0;
 
         }
+
+
+        target += log_sum_exp(
+          log_theta[sumM[i] + m,s] + log_p_ydelta1,
+          log1m_theta[sumM[i] + m,s] + log_p_ydelta0);
 
       }
 
     }
 
+  }
+
   ///////////// loglikelihood of spikeins ///////////////////
 
-    for(s in 1:S_star){
+  for(s in 1:S_star){
 
-      for (i in 1:n) {
+    for (i in 1:n) {
 
-        for(m in 1:M[i]){
+      for(m in 1:M[i]){
 
-          for(k in 1:K[sumM[i] + m]){
+        for(k in 1:K[sumM[i] + m]){
 
-            real lambda_simk_spike = lambda[S + s] + o_im[sumM[i] + m];// + u_imk[sumK[sumM[i] + m] + k];
-            // real lambda_simk = lambda[S + s] + o_im[sumM[i] + m] + u_imk[sumK[sumM[i] + m] + k];
+          real lambda_simk_spike = lambda[S + s] + o_im[sumM[i] + m];// + u_imk[sumK[sumM[i] + m] + k];
+          // real lambda_simk = lambda[S + s] + o_im[sumM[i] + m] + u_imk[sumK[sumM[i] + m] + k];
 
-            real logpyc1 = normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | lambda_simk_spike, sigma1[S + s]);
+          real logpyc1 = normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | lambda_simk_spike, sigma1[S + s]);
 
-            real logpyc0 =
-              // logpyc0_precomp[sumK[sumM[i] + m] + k, S + s];
-            log_sum_exp(
-              log(pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | log(1), .00001),
-              log(1 - pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | 0, sigma0)
+          real logpyc0 =
+          // logpyc0_precomp[sumK[sumM[i] + m] + k, S + s];
+          log_sum_exp(
+            log(pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | log(1), .00001),
+            log(1 - pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | 0, sigma0)
             );
 
             target +=
-              // normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | lambda_simk_spike, sigma1[S + s]);
+            // normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | lambda_simk_spike, sigma1[S + s]);
             // normal_lpdf(logy1[sumK[sumM[i] + m] + k,S + s] | lambda_simk_spike, .1);
             // logpyc1;
             log_sum_exp(
               logpyc1 + log(p[S + s]),
               logpyc0 + log(1 - p[S + s])
-            );
-
-          }
+              );
 
         }
+
       }
     }
+  }
 
 
 
@@ -312,28 +279,28 @@ log(1 - pi0) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | 0, sigma0)
     //   vector[N2] lambda_simk;
     //   int pos = 1;
     //
-      //   for (i in 1:n) {
-        //     for (m in 1:M[i]) {
-          //       int im_index = sumM[i] + m;
-          //       for (k in 1:K[im_index]) {
-            //         lambda_simk[pos] = lambda[S + s] + o_im[im_index]; // + u_imk[sumK[im_index] + k] if needed
-            //         pos += 1;
-            //       }
+    //   for (i in 1:n) {
+      //     for (m in 1:M[i]) {
+        //       int im_index = sumM[i] + m;
+        //       for (k in 1:K[im_index]) {
+          //         lambda_simk[pos] = lambda[S + s] + o_im[im_index]; // + u_imk[sumK[im_index] + k] if needed
+          //         pos += 1;
+          //       }
           //     }
-        //   }
-    //
-      //   // Vectorized computations
-    //   vector[N] logpyc1 = normal_lpdf(logy1[1:sumK[sumM[n] + M[n]], S + s] | lambda_simk, sigma1[S + s]);
-    //   vector[sumK[sumM[n] + M[n]]] logpyc0 = logpyc0_precomp[1:sumK[sumM[n] + M[n]], S + s];
-    //
-      //   // Vectorized log_sum_exp
-    //   vector[sumK[sumM[n] + M[n]]] log_terms = log_sum_exp(
-      //     logpyc1 + log(p[S + s]),
-      //     logpyc0 + log(1 - p[S + s])
-      //     );
-    //
-      //     // Accumulate the sum
-    //     target += sum(log_terms);
-    // }
+          //   }
+          //
+          //   // Vectorized computations
+          //   vector[N] logpyc1 = normal_lpdf(logy1[1:sumK[sumM[n] + M[n]], S + s] | lambda_simk, sigma1[S + s]);
+          //   vector[sumK[sumM[n] + M[n]]] logpyc0 = logpyc0_precomp[1:sumK[sumM[n] + M[n]], S + s];
+          //
+          //   // Vectorized log_sum_exp
+          //   vector[sumK[sumM[n] + M[n]]] log_terms = log_sum_exp(
+            //     logpyc1 + log(p[S + s]),
+            //     logpyc0 + log(1 - p[S + s])
+            //     );
+            //
+            //     // Accumulate the sum
+            //     target += sum(log_terms);
+            // }
 
 }
