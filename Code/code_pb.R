@@ -11,7 +11,8 @@ options(mc.cores = parallel::detectCores())
 
 source(here("Code","function_pb.R"))
 
-cfvars = read.csv("allsitevars_CF.csv")
+
+cfvars = read.csv("../NatureAir/output/allsitevars_CF.csv")
 #remove bat roost & visit that hasn't happpened yet
 cfvars = cfvars %>% filter(Date < Sys.time()) %>% filter(Name != 'Bat roost')
 # add technical replicates to dataset
@@ -31,16 +32,16 @@ L <- 19 # locations per site
 n_ecol <- n_s * t * L
 
 S <- 3
-S_star <- 1 #spike-in control species
+S_star <- 0 #spike-in control species
 M <- rep(3, n_ecol) #temporal replicates per sample
 N <- sum(M) #total temporal replicates
 K <- rep(4, N) #PCR replicates per replicate sample
 ncov_theta <- 2 #predictors for occupancy/detection part of model
 
 # parameters
-tau_true <- rep(.2, S)
+tau_true <- rep(.2, S) #this determines the variation or level of noise within species, between sites
 phi_true <- rep(1, S)
-sigma_true <- rep(1, S)
+sigma_true <- rep(0.2, S)
 beta0_theta_true <- rep(0, S)
 sigma_u_true <- 1
 lambda_true <- rnorm(S + S_star, mean = 9, sd = 1)
@@ -52,7 +53,7 @@ pi0_true <- .95
 # This can be played around with a bit, but depends on what our threshold is for removing samples with low read numbers.
 lambda0_true <- 3
 
-list_simdata <- simulateData(cfvars, n_s, t, L, n_t,
+list_simdata <- simulateData(cfvars, n_s, t, L,
                              S, S_star, M, N, K,
                              ncov_theta,
                              tau_true, sigma_true, phi_true, beta0_theta_true,
@@ -73,9 +74,9 @@ results_stan <- rstan::vb(
            "sigma0","sigma","sigma1","p","phi"
   ),
   # init = init_fun,
-  iter = 10000,
+  iter = 15000,
   # elbo_samples = 500,
-  tol_rel_obj = 0.0001,
+  tol_rel_obj = 0.00001,
   output_samples = 500)
 
 # RESULTS --------
@@ -88,22 +89,68 @@ matrix_results <- as.matrix(results_stan)
     as.data.frame
 
   texts <- colnames(beta_z_results)
-  pattern <- sprintf("\\[%d,", L + t)
+  pattern <- sprintf("\\[%d,", L + 2)
   selected <- grepl(pattern, texts) & grepl("beta_z", texts)
-
+  # on each column, calculate the 95% credible intervals
   beta_z_results <- beta_z_results[,selected] %>%
     apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
     as.data.frame
 
-  beta_z_results$True <- as.vector(params$beta_z[7,])
+  beta_z_results$True <- as.vector(params$beta_z[L+2,])
 
   ggplot(beta_z_results, aes(x = 1:nrow(beta_z_results),
                              y = True,
                              ymin = `2.5%`,
                              ymax = `97.5%`)) + geom_errorbar() + geom_point() +
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
     scale_x_continuous(breaks = 1:S)
 
 }
+
+
+# map of DNA biomass
+{
+logl_results = matrix_results %>%
+  as.data.frame()
+
+texts <- colnames(logl_results)
+loglsel <- grepl('logl', texts)
+# for each species, there are 76 estimates of logl
+# this will be in the order of 1-19 for visit 1, visit 2 etc, or visit 1-4 for site 1, site 2 etc.
+
+logl_results = logl_results[,loglsel] %>%
+  apply(., 2, function(x) c(
+    mean = mean(x),
+    quantile(x, probs = c(0.025, 0.975)))) %>% t %>%
+  as.data.frame()
+
+
+logl_results$species = rep(1:3, each = 76)
+cfvars_sub = cfvars %>% group_by(Name,Visit) %>% filter(row_number() == 1)
+#merge cfvarssub with loglresults (each needs to repeat)
+cfvars_species = do.call(rbind, replicate(3,cfvars_sub, simplify = FALSE))
+logl_results = cbind(logl_results, cfvars_species)
+
+
+library(sf)
+
+logl_sf = st_as_sf(logl_results, coords = c("Longitude", "Latitude"), crs = 4326)
+
+ggplot(data = logl_sf) +
+  geom_sf(aes(size = mean), alpha = 0.6, colour = 'grey') +
+  theme_minimal() + facet_grid(species ~ Visit)
+}
+
+# plot effect of distance over time
+ggplot(data = logl_sf, aes(x = dist_m, y = mean, ymax = `97.5%`, ymin = `2.5%`, group = as.factor(Visit), fill = as.factor(Visit), colour = as.factor(Visit))) +
+  geom_smooth() +
+  facet_wrap(species~ Visit)
+
+
+
+# logl is a proxy for how much biomass is at the site. but we don't know amplification rates, we don't
+# know shedding rate. so its on an abstract scale because we cannot actually measure how much DNA is in the area.
 
 # ------
 

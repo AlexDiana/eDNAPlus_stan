@@ -12,7 +12,7 @@ logistic <- function(x) 1 / (1 + exp(-x))
 # ncov_theta,
 # tau, sigma, phi, beta0_theta,
 # lambda, p, q, sigma_u, pi0, lambda0
-simulateData <- function(data, n_s, t, L, n_t,
+simulateData <- function(data, n_s, t, L,
                          S, S_star, M, N, K,
                          ncov_theta,
                          tau, sigma, phi, beta0_theta,
@@ -35,7 +35,6 @@ simulateData <- function(data, n_s, t, L, n_t,
 
   # create dataframe of each visit to each site
   # Build design matrix from real cfvars
-  # Do i need to include temporal replicates in this matrix?
   data_sub = data %>% group_by(Name,Visit) %>% filter(row_number() == 1)
   data_sub$Visit <- scale(data_sub$Visit)
   # X_z <- model.matrix(~ factor(Name) + factor(Visit) + dist_m_scale - 1, data = data_sub)
@@ -55,16 +54,16 @@ simulateData <- function(data, n_s, t, L, n_t,
   #generate coefficients of each variable on each species
   # this was previously random, but i'm adding in directions
   beta_z_true = matrix(0, ncol(X_z), S)
-  # no effect of site
+  # no effect of sampling location
   beta_z_true[grep("Name", colnames(X_z)), ] <- 0
   # Positive effect of visit
   beta_z_true[grep("Visit", colnames(X_z)), ] <- 1   # or any positive value you like
   # Negative effect of distance
-  beta_z_true[grep("dist_m", colnames(X_z)), ] <- -1 # adjust magnitude if you want
+  beta_z_true[grep("dist_m", colnames(X_z)), ] <- -3 # adjust magnitude if you want
 
 
   # randomly generate the effects of environmental variables (e.g. temp and precipitation) on OCCUPANCY
-  #i.e is the species present or not
+  # i.e is the species present or not
   # At the moment this is random, but you could assign directions/intensity across species.
   beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
 
