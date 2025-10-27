@@ -54,22 +54,39 @@ simulateData <- function(data, n_s, t, L,
   #generate coefficients of each variable on each species
   # this was previously random, but i'm adding in directions
   beta_z_true = matrix(0, ncol(X_z), S)
+
   # no effect of sampling location
   beta_z_true[grep("Name", colnames(X_z)), ] <- 0
+
   # Positive effect of visit
-  beta_z_true[grep("Visit", colnames(X_z)), ] <- 1   # or any positive value you like
+  beta_z_true[grep("Visit", colnames(X_z)), ] <- c(4,2,0)   # or any positive value you like, different values for species
+
   # Negative effect of distance
-  beta_z_true[grep("dist_m", colnames(X_z)), ] <- -3 # adjust magnitude if you want
+  beta_z_true[grep("dist_m", colnames(X_z)), ] <- c(-1,-5,-10) # adjust magnitude if you want
 
 
   # randomly generate the effects of environmental variables (e.g. temp and precipitation) on OCCUPANCY
   # i.e is the species present or not
   # At the moment this is random, but you could assign directions/intensity across species.
-  beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
+  # Each column is a species.
+  beta_theta_true <- matrix(0, ncov_theta, S)
+  # beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
+  # Temperature would have a nagative effect
+  # Rain would have a stronger neg effect
+  # wind would have a smaller neg effect
+  beta_theta_true[1,] = -0.5 #temp
+  beta_theta_true[2,] = -0.6 #rain
+  beta_theta_true[3,] = -0.01 #wind speed
+
 
   # generate the effects of environmental variables (e.g. temp and precipitation) on DETECTION PROBABILITY
   #i.e how strong is the signal of species presence?
-  beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
+  beta_w_true <- matrix(0, ncov_theta, S)
+  # beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
+  beta_w_true[1,] = -0.5 #temp
+  beta_w_true[2,] = -0.6 #rain
+  beta_w_true[3,] = 0.01 #wind speed
+
 
   # --- Latent abundance ---
   # Latent state is the 'true' state - before noise from other processess are added.
