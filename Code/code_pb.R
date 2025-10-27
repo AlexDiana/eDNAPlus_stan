@@ -16,7 +16,8 @@ source(here("Code","function_pb.R"))
 
 cfvars = read.csv(here("Data","allsitevars_CF.csv"))
 #remove bat roost & visit that hasn't happpened yet
-cfvars = cfvars %>% filter(Date < Sys.time()) %>% filter(Name != 'Bat roost')
+# cfvars = cfvars %>% filter(Date < Sys.time()) %>% filter(Name != 'Bat roost')
+cfvars = cfvars %>% filter(Visit != 5)
 # add technical replicates to dataset
 # cfvars_rep <- cfvars %>%
 #   uncount(weights = 4, .id = "TechRep")
