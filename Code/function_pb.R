@@ -85,7 +85,7 @@ simulateData <- function(data, n_s, t, L,
   # beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
   beta_w_true[1,] = -0.5 #temp
   beta_w_true[2,] = -0.6 #rain
-  beta_w_true[3,] = 0.01 #wind speed
+  beta_w_true[3,] = -0.01 #wind speed
 
 
   # --- Latent abundance ---
