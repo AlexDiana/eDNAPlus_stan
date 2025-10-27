@@ -4,6 +4,8 @@ library(rstan)
 library(coda)
 library(tidyverse)
 library(ggplot2)
+library(sf)
+library(patchwork)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
@@ -39,19 +41,19 @@ K <- rep(4, N) #PCR replicates per replicate sample
 ncov_theta <- 2 #predictors for occupancy/detection part of model
 
 # parameters
-tau_true <- rep(.2, S) #this determines the variation or level of noise within species, between sites
-phi_true <- rep(1, S)
-sigma_true <- rep(0.2, S)
+tau_true <- rep(.1, S) #this determines the variation or level of noise within species, between sites
+phi_true <- rep(0.5, S)
+sigma_true <- rep(0.02, S) #variation across samples
 beta0_theta_true <- rep(0, S)
 sigma_u_true <- 1
-lambda_true <- rnorm(S + S_star, mean = 9, sd = 1)
+lambda_true <- rnorm(S + S_star, mean = 20, sd = 1)
 p_true <- c(rep(.95, S), rep(1, S_star))
 
 q_true <- c(rep(.05, S), rep(1, S_star)) # prob of false positive
 pi0_true <- .95
 # lambda0 determines the number of reads you get, when there is a false positive.
 # This can be played around with a bit, but depends on what our threshold is for removing samples with low read numbers.
-lambda0_true <- 3
+lambda0_true <- 0.05
 
 list_simdata <- simulateData(cfvars, n_s, t, L,
                              S, S_star, M, N, K,
@@ -115,58 +117,127 @@ matrix_results <- as.matrix(results_stan)
 
   beta_z_results$True <- as.vector(params$beta_z[L+2,])
 
-  ggplot(beta_z_results, aes(x = 1:nrow(beta_z_results),
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+  distanceef = ggplot(beta_z_results, aes(x = 1:nrow(beta_z_results),
                              y = True,
                              ymin = `2.5%`,
-                             ymax = `97.5%`)) + geom_errorbar() + geom_point() +
+                             ymax = `97.5%`)) +
+    geom_errorbar() +
+    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
     # ylim(-1, 0) +
     geom_hline(yintercept = 0, linetype = 'dashed') +
-    scale_x_continuous(breaks = 1:S)
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of distance from roost on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+
+    ggtitle('Distance')
+  # distanceef
 
 }
 
-
-# map of DNA biomass
 {
-  logl_results = matrix_results %>%
+  beta_z_results <- matrix_results %>%
+    as.data.frame
+  pattern <- sprintf("\\[%d,", L + 1)
+  selected <- grepl(pattern, texts) & grepl("beta_z", texts)
+  # on each column, calculate the 95% credible intervals
+  beta_z_results <- beta_z_results[,selected] %>%
+    apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
+    as.data.frame
+
+  beta_z_results$True <- as.vector(params$beta_z[L+1,])
+
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+  seasonef = ggplot(beta_z_results, aes(x = 1:nrow(beta_z_results),
+                                          y = True,
+                                          ymin = `2.5%`,
+                                          ymax = `97.5%`)) +
+    geom_errorbar() +
+    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of season on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+    ggtitle("Season")
+  # seasonef
+}
+
+distanceef+seasonef + plot_layout(guides = 'collect')
+
+# logl is the predicted log DNA biomass of a site. there is one prediction per site for each time interval.
+# map of DNA biomass
+
+logl_results = matrix_results %>%
     as.data.frame()
 
-  texts <- colnames(logl_results)
-  loglsel <- grepl('logl', texts)
-  # for each species, there are 76 estimates of logl
-  # this will be in the order of 1-19 for visit 1, visit 2 etc, or visit 1-4 for site 1, site 2 etc.
+texts <- colnames(logl_results)
+loglsel <- grepl('logl', texts)
+# for each species, there are 76 estimates of logl
+# this will be in the order of 1-19 for visit 1, visit 2 etc, or visit 1-4 for site 1, site 2 etc.
+# it is the same format as the original data (cfvars)
 
-  logl_results = logl_results[,loglsel] %>%
-    apply(., 2, function(x) c(
-      mean = mean(x),
-      quantile(x, probs = c(0.025, 0.975)))) %>% t %>%
+logl_results = logl_results[,loglsel] %>%
+  apply(., 2, function(x) c(
+    mean = mean(x),
+    quantile(x, probs = c(0.025, 0.975)))) %>% t %>%
     as.data.frame()
 
+logl_results$species = rep(1:S, each = n_s * t * L)
+cfvars_sub = cfvars %>% group_by(Name,Visit) %>% filter(row_number() == 1)
+#merge cfvarssub with loglresults (each needs to repeat)
+cfvars_species = do.call(rbind, replicate(3,cfvars_sub, simplify = FALSE))
+logl_results = cbind(logl_results, cfvars_species)
 
-  logl_results$species = rep(1:S, each = n_s * t * L)
-  cfvars_sub = cfvars %>% group_by(Name,Visit) %>% filter(row_number() == 1)
-  #merge cfvarssub with loglresults (each needs to repeat)
-  cfvars_species = do.call(rbind, replicate(3,cfvars_sub, simplify = FALSE))
-  logl_results = cbind(logl_results, cfvars_species)
-
-
-  library(sf)
-
-  logl_sf = st_as_sf(logl_results, coords = c("Longitude", "Latitude"), crs = 4326)
-
-  ggplot(data = logl_sf) +
+logl_sf = st_as_sf(logl_results, coords = c("Longitude", "Latitude"), crs = 4326)
+ggplot(data = logl_sf) +
     geom_sf(aes(size = mean), alpha = 0.6, colour = 'grey') +
     theme_minimal() + facet_grid(species ~ Visit)
-}
 
-# plot effect of distance over time
+
+# plot DNA biomass over distance and time
+species_labels <- c('1' = "Brown Long-eared",
+                   "2" = "Greater Horsehoe",
+                    "3" = "Lesser Horseshoe")
+
+# relabel visit
+logl_sf$Visit <- factor(
+  logl_sf$Visit,
+  levels = 1:4,
+  labels = c("March", "May", "June", "September")
+)
+library(ggh4x)
 ggplot(data = logl_sf, aes(x = dist_m, y = mean, ymax = `97.5%`, ymin = `2.5%`,
-                           group = as.factor(Visit), fill = as.factor(Visit),
-                           colour = as.factor(Visit))) +
+                           fill = Visit,
+                           colour = Visit)) +
   geom_smooth() +
-  facet_wrap(species ~ Visit)
-
-
+  ggh4x::facet_grid2(species~Visit, labeller = labeller(species = species_labels), scales = 'free_x', independent = "x") +
+  labs(fill = 'Visit', colour = 'Visit', x = 'Distance from roost (m)',
+       y = 'DNA Biomass') +
+  scale_fill_viridis_d() +
+  scale_colour_viridis_d() +
+  theme_classic() +
+  theme(strip.background = element_rect(colour="white", fill="white"),
+        strip.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12)
+        )
 
 # logl is a proxy for how much biomass is at the site. but we don't know amplification rates, we don't
 # know shedding rate. so its on an abstract scale because we cannot actually measure how much DNA is in the area.
