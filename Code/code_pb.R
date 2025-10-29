@@ -149,14 +149,14 @@ matrix_results <- as.matrix(results_stan)
 {
   beta_z_results <- matrix_results %>%
     as.data.frame
-  pattern <- sprintf("\\[%d,", L + 1)
+  pattern <- sprintf("\\[%d,", 1)
   selected <- grepl(pattern, texts) & grepl("beta_z", texts)
   # on each column, calculate the 95% credible intervals
   beta_z_results <- beta_z_results[,selected] %>%
     apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
     as.data.frame
 
-  beta_z_results$True <- as.vector(params$beta_z[L+1,])
+  beta_z_results$True <- as.vector(params$beta_z[1,])
 
   species_names <- c("Brown Long-eared",
                      "Greater Horsehoe",
