@@ -42,11 +42,11 @@ K <- rep(4, N) #PCR replicates per replicate sample
 ncov_theta <- 2 #predictors for occupancy/detection part of model
 
 # parameters
-tau_true <- rep(.1, S) #this determines the variation or level of noise within species, between sites
+tau_true <- rep(.05, S) #this determines the variation or level of noise within species, between sites
 phi_true <- rep(0.5, S)
 sigma_true <- rep(0.02, S) #variation across samples
 beta0_theta_true <- rep(0, S)
-sigma_u_true <- 1
+sigma_u_true <- 0.05
 lambda_true <- rnorm(S + S_star, mean = 20, sd = 1)
 p_true <- c(rep(.95, S), rep(1, S_star))
 
@@ -109,14 +109,16 @@ matrix_results <- as.matrix(results_stan)
     as.data.frame
 
   texts <- colnames(beta_z_results)
-  pattern <- sprintf("\\[%d,", L + 2)
+  # pattern <- sprintf("\\[%d,", L + 2)
+  pattern <- sprintf("\\[%d,", 2)
   selected <- grepl(pattern, texts) & grepl("beta_z", texts)
   # on each column, calculate the 95% credible intervals
   beta_z_results <- beta_z_results[,selected] %>%
     apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
     as.data.frame
 
-  beta_z_results$True <- as.vector(params$beta_z[L+2,])
+  # beta_z_results$True <- as.vector(params$beta_z[L+2,])
+  beta_z_results$True <- as.vector(params$beta_z[2,])
 
   species_names <- c("Brown Long-eared",
                      "Greater Horsehoe",

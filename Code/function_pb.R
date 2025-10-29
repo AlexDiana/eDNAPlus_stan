@@ -18,11 +18,9 @@ simulateData <- function(data, n_s, t, L,
                          tau, sigma, phi, beta0_theta,
                          lambda, p, q, sigma_u, pi0, lambda0){
 
-
   n_ecol <- n_s * t * L     # total ecological field samples (site × visit × location × temporal replicate)
   N <- sum(M)                # total number of temporal replicates
   N2 <- sum(K)               # total number of PCR replicates
-
 
   # --- Index helpers ---
   # site_id     <- rep(1:L, each = t * n_t)
@@ -38,7 +36,8 @@ simulateData <- function(data, n_s, t, L,
   data_sub = data %>% group_by(Name,Visit) %>% filter(row_number() == 1)
   data_sub$Visit <- scale(data_sub$Visit)
   # X_z <- model.matrix(~ factor(Name) + factor(Visit) + dist_m_scale - 1, data = data_sub)
-  X_z <- model.matrix(~ factor(Name) + Visit + dist_m_scale - 1, data = data_sub)
+  X_z <- model.matrix(~ Visit + dist_m_scale - 1, data = data_sub)
+  # X_z <- model.matrix(~ factor(Name) + Visit + dist_m_scale - 1, data = data_sub)
   ncov_z = ncol(X_z)
 
   # Choose which covariates to include in detection
@@ -56,7 +55,7 @@ simulateData <- function(data, n_s, t, L,
   beta_z_true = matrix(0, ncol(X_z), S)
 
   # no effect of sampling location
-  beta_z_true[grep("Name", colnames(X_z)), ] <- 0
+  # beta_z_true[grep("Name", colnames(X_z)), ] <- 0
 
   # Positive effect of visit
   beta_z_true[grep("Visit", colnames(X_z)), ] <- c(4,2,0)   # or any positive value you like, different values for species
