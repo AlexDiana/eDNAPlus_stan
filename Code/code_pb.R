@@ -110,7 +110,7 @@ matrix_results <- as.matrix(results_stan)
 
   texts <- colnames(beta_z_results)
   # pattern <- sprintf("\\[%d,", L + 2)
-  pattern <- sprintf("\\[%d,", 2)
+  pattern <- sprintf("\\[%d,", t+1)
   selected <- grepl(pattern, texts) & grepl("beta_z", texts)
   # on each column, calculate the 95% credible intervals
   beta_z_results <- beta_z_results[,selected] %>%
@@ -118,7 +118,7 @@ matrix_results <- as.matrix(results_stan)
     as.data.frame
 
   # beta_z_results$True <- as.vector(params$beta_z[L+2,])
-  beta_z_results$True <- as.vector(params$beta_z[2,])
+  beta_z_results$True <- as.vector(params$beta_z[t+1,])
 
   species_names <- c("Brown Long-eared",
                      "Greater Horsehoe",
@@ -145,23 +145,29 @@ matrix_results <- as.matrix(results_stan)
   # distanceef
 
 }
-
+visit_effects <- beta_z_results[grepl("beta_z\\[[1-4],", texts), ]
 {
   beta_z_results <- matrix_results %>%
     as.data.frame
-  pattern <- sprintf("\\[%d,", 1)
+  # pattern <- sprintf("\\[%d,", 1)
+  pattern = paste(sprintf("\\[%d,", 1:t), collapse = "|")
   selected <- grepl(pattern, texts) & grepl("beta_z", texts)
   # on each column, calculate the 95% credible intervals
   beta_z_results <- beta_z_results[,selected] %>%
     apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
     as.data.frame
 
-  beta_z_results$True <- as.vector(params$beta_z[1,])
+  beta_z_results$True <- as.vector(params$beta_z[1:t,])
+
 
   species_names <- c("Brown Long-eared",
                      "Greater Horsehoe",
                      "Lesser Horseshoe")
-  seasonef = ggplot(beta_z_results, aes(x = 1:nrow(beta_z_results),
+  Visits = c("March", "May", "June", "September")
+  beta_z_results$Species <- rep(species_names, each = t)
+  beta_z_results$Visit <- factor(rep(Visits, times = S), levels = c('March', 'May', 'June', 'September'))
+
+  seasonef = ggplot(beta_z_results, aes(x = Visit,
                                           y = True,
                                           ymin = `2.5%`,
                                           ymax = `97.5%`)) +
@@ -170,16 +176,19 @@ matrix_results <- as.matrix(results_stan)
     scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
     # ylim(-1, 0) +
     geom_hline(yintercept = 0, linetype = 'dashed') +
-    scale_x_continuous(breaks = 1:S, labels = species_names) +
-    xlab('Species') +
+    # scale_x_continuous(breaks = 1:t, labels = Visits) +
+    xlab('Visit') +
     ylab('Effect of season on DNA biomass') +
+    facet_wrap(~Species, scales = 'free') +
     theme_classic() +
     theme(axis.text = element_text(size = 14),
           axis.text.x = element_text(angle = 45, hjust = 1),
           axis.title =element_text(size = 14),
-          legend.text = element_text(size = 14)) +
+          legend.text = element_text(size = 14),
+          strip.background = element_blank()) +
+    ylim(-1,8) +
     ggtitle("Season")
-  # seasonef
+   seasonef
 }
 
 distanceef+seasonef + plot_layout(guides = 'collect')
