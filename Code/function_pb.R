@@ -40,21 +40,22 @@ simulateData <- function(data, n_s, t, L,
   # X_z <- model.matrix(~ factor(Name) + Visit + dist_m_scale - 1, data = data_sub)
   ncov_z = ncol(X_z)
 
+  # commenting this out for now to check if correlation with weather variables is affecting season
   # Choose which covariates to include in detection
   # Once this has one row per technical replicate it will need to be subsetted again.
-  X_theta <- as.matrix(data[, c("t2m_c_mean",
-                                  "total_precipitation_mm", "wind10m_ms_mean")])
-  X_theta = scale(X_theta)
-  ncov_theta <- ncol(X_theta)
+  # X_theta <- as.matrix(data[, c("t2m_c_mean",
+  #                                 "total_precipitation_mm", "wind10m_ms_mean")])
+  # X_theta = scale(X_theta)
+  # ncov_theta <- ncol(X_theta)
+
+  X_theta <- matrix(rnorm(N * ncov_theta), N, ncov_theta)
 
   # --- Species-level coefficients ---
   # Here we are generating coefficients i.e how each variable affects abundance of each species
 
   #generate coefficients of each variable on each species
   # this was previously random, but i'm adding in directions
-  beta_z_true = matrix(0, ncol(X_z), S)
-
-  # no effect of sampling location
+  beta_z_true = matrix(0, ncol(X_z), S) # no effect of sampling location
   # beta_z_true[grep("Name", colnames(X_z)), ] <- 0
 
   # Positive effect of visit
@@ -68,23 +69,30 @@ simulateData <- function(data, n_s, t, L,
   # i.e is the species present or not
   # At the moment this is random, but you could assign directions/intensity across species.
   # Each column is a species.
-  beta_theta_true <- matrix(0, ncov_theta, S)
-  # beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
-  # Temperature would have a nagative effect
-  # Rain would have a stronger neg effect
-  # wind would have a smaller neg effect
-  beta_theta_true[1,] = -0.5 #temp
-  beta_theta_true[2,] = -0.6 #rain
-  beta_theta_true[3,] = -0.01 #wind speed
+
+  # commenting this out for now to check if correlation with weather variables is affecting season
+  # beta_theta_true <- matrix(0, ncov_theta, S)
+  # # beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
+  # # Temperature would have a nagative effect
+  # # Rain would have a stronger neg effect
+  # # wind would have a smaller neg effect
+  # beta_theta_true[1,] = -0.5 #temp
+  # beta_theta_true[2,] = -0.6 #rain
+  # beta_theta_true[3,] = -0.01 #wind speed
+
+  # beta_z_true <- matrix(sample(c(-1,1,0), ncov_z * S, replace = T), ncov_z, S)
+  beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = T), ncov_theta, S)
+  beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = T), ncov_theta, S)
 
 
-  # generate the effects of environmental variables (e.g. temp and precipitation) on DETECTION PROBABILITY
-  #i.e how strong is the signal of species presence?
-  beta_w_true <- matrix(0, ncov_theta, S)
-  # beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
-  beta_w_true[1,] = -0.5 #temp
-  beta_w_true[2,] = -0.6 #rain
-  beta_w_true[3,] = 0.01 #wind speed
+  # commenting this out for now to check if correlation with weather variables is affecting season
+  # # generate the effects of environmental variables (e.g. temp and precipitation) on DETECTION PROBABILITY
+  # #i.e how strong is the signal of species presence?
+  # beta_w_true <- matrix(0, ncov_theta, S)
+  # # beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
+  # beta_w_true[1,] = -0.5 #temp
+  # beta_w_true[2,] = -0.6 #rain
+  # beta_w_true[3,] = 0.01 #wind speed
 
 
   # --- Latent abundance ---
