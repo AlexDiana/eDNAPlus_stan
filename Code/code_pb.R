@@ -43,11 +43,11 @@ ncov_theta <- 2 #predictors for occupancy/detection part of model
 
 # parameters
 tau_true <- rep(.5, S) #this determines the variation or level of noise within species, between sites
-phi_true <- rep(1, S)
+phi_true <- rep(1, S) # response of the occupancy probability to the biomass
 sigma_true <- rep(0.02, S) #variation across samples
 sigma_y_true <- rep(0.5, S) #variation across samples
-beta0_theta_true <- rep(3, S)
-sigma_u_true <- 0.05
+beta0_theta_true <- rep(3, S) # baseline detection rate
+sigma_u_true <- 0.05 # PCR noise
 lambda_true <- rnorm(S + S_star, mean = 20, sd = 1)
 p_true <- c(rep(.95, S), rep(1, S_star))
 

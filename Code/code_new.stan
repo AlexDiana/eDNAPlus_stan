@@ -60,7 +60,8 @@ parameters {
 
   matrix[n, S] logl;
   matrix[N, S] v_im;
-  vector[N2] u_imk;
+  // vector[N2] u_imk;
+  vector[N2-1] u_imk_raw;
 
   real<lower = 0> tau[S];
   real<lower = 0> sigma[S];
@@ -79,10 +80,10 @@ parameters {
   real<lower = 0> sigma0;
 
   // false positive parameter
-  // real<lower = 0, upper = 1> p[S + S_star];
-  // real<lower = 0, upper = .2> q[S + S_star];
-  real logit_p[S + S_star];
-  real logit_q[S + S_star];
+  real<lower = 0, upper = 1> p[S + S_star];
+  real<lower = 0, upper = .2> q[S + S_star];
+  // real logit_p[S + S_star];
+  // real logit_q[S + S_star];
   real<lower = 0, upper = 1> theta0[S];
 
 }
@@ -109,6 +110,10 @@ transformed parameters {
   matrix[N, S] log_theta = log_inv_logit(logit_theta);
   matrix[N, S] log1m_theta = log1m_inv_logit(logit_theta);
 
+  vector[N2] u_imk;
+  u_imk[1:(N2-1)] = u_imk_raw;
+  u_imk[N2] = -sum(u_imk_raw);
+
 }
 
 model {
@@ -131,15 +136,15 @@ model {
   lambda[1:(S + S_star)] ~ normal(lambda_prior[1:(S + S_star)], 0.1);
   beta0_theta ~ normal(0, .1);
   theta0 ~ beta(a_theta0, b_theta0);
-  // p ~ beta(a_p, b_p);
-  // q ~ beta(a_q, b_q);
-  logit_p ~ normal(2.2, 1);
-  logit_q ~ normal(-2.2, 1);
+  p ~ beta(a_p, b_p);
+  q ~ beta(a_q, b_q);
+  // logit_p ~ normal(2.2, 1);
+  // logit_q ~ normal(-2.2, 1);
   sigma_y ~ gamma(a_sigma1, b_sigma1);
 
   u_imk ~ normal(0, 10);
 
-  to_vector(v_im) ~ normal(0, 10);
+  // to_vector(v_im) ~ normal(0, 10);
 
   // likelihood of logl
 
@@ -178,13 +183,13 @@ model {
 
             if(logy1[sumK[sumM[i] + m] + k,s] > 0){
 
-              // log_p_ydelta0 += log(q[s]) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | mu0, sigma0);
-              log_p_ydelta0 += log_inv_logit(logit_q[s]) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | mu0, sigma0);
+              log_p_ydelta0 += log(q[s]) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | mu0, sigma0);
+              // log_p_ydelta0 += log_inv_logit(logit_q[s]) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | mu0, sigma0);
 
             } else {
 
-              log_p_ydelta0 += log1m_inv_logit(logit_q[s]);
-              // log_p_ydelta0 += log(1 - q[s]);
+              // log_p_ydelta0 += log1m_inv_logit(logit_q[s]);
+              log_p_ydelta0 += log(1 - q[s]);
 
             }
 
@@ -209,13 +214,13 @@ model {
 
               if(logy1[sumK[sumM[i] + m] + k,s] > 0){
 
-                // log_p_ydelta1 += log(p[s]) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | lambda_simk, sigma_y[s]);
-                log_p_ydelta1 += log_inv_logit(logit_p[s]) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | lambda_simk, sigma_y[s]);
+                log_p_ydelta1 += log(p[s]) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | lambda_simk, sigma_y[s]);
+                // log_p_ydelta1 += log_inv_logit(logit_p[s]) + normal_lpdf(logy1[sumK[sumM[i] + m] + k,s] | lambda_simk, sigma_y[s]);
 
               } else {
 
-                log_p_ydelta1 += log1m_inv_logit(logit_p[s]);;
-                // log_p_ydelta1 += log(1 - p[s]);
+                // log_p_ydelta1 += log1m_inv_logit(logit_p[s]);
+                log_p_ydelta1 += log(1 - p[s]);
 
               }
 

@@ -1,4 +1,6 @@
 
+
+
 logistic <- function(x) 1 / (1 + exp(-x))
 
 trnorm <- function(n, mean, sd){
@@ -111,8 +113,8 @@ simulateData <- function(data, n_s, t, L,
   # --- Occupancy probabilities and presence/absence ---
 
   # Copy ecological values for each technical replicate
-  theta_true <- logistic(matrix(beta0_theta_true, N, S, byrow = TRUE) + #create a matrix of S species and N (tech sample) rows
-                           X_theta[] %*% beta_theta_true + #matrix of covariate effects on each species in each sample
+  theta_true <- logistic(matrix(beta0_theta, N, S, byrow = TRUE) + #create a matrix of S species and N (tech sample) rows
+                           X_theta %*% beta_theta_true + #matrix of covariate effects on each species in each sample
                            logl_true[im_idx,] * matrix(phi, N, S, byrow = TRUE))
 
   # theta_true represents occupancy probability of each species in each sample, before technical-replicate noise is added.
@@ -147,13 +149,13 @@ simulateData <- function(data, n_s, t, L,
           if (s <= S) {
 
             # real species
-            cimk <- ifelse(delta_true[i, s] == 1,
+            cimk <- ifelse(delta_true[sumM[i] + m, s] == 1,
                            rbinom(1, 1, p[s]),
                            2 * rbinom(1, 1, q[s])) #use detection probability to determine if species is present or not
 
             if (cimk == 1) {
 
-              lambda_simk <- exp(lambda[s] + v_true[i, s] + o_true[i] + u_true[sumK[sumM[i] + m] + k])
+              lambda_simk <- exp(lambda[s] + v_true[sumM[i] + m, s] + o_true[sumM[i] + m] + u_true[sumK[sumM[i] + m] + k])
 
               logy1[sumK[sumM[i] + m] + k, s] <- trnorm(1, log(lambda_simk + 1), sigma_y[s]) #generate read count
 
@@ -186,15 +188,16 @@ simulateData <- function(data, n_s, t, L,
   # logy1 <- log(yimk_true + 1)
   lambda_start <- apply(logy1, 2, function(x) mean(x[x > 1]))
 
-  sampleZero <- matrix(NA, N, S)
-  for (s in 1:S) {
-    for (i in 1:n_ecol) {
-      for (m in 1:M[i]) {
-        sampleZero[sumM[i] + m, s] <- sum( logy1[sumK[sumM[i] + m] + 1:K[sumM[i] + m], s]  > 0)
-      }
-    }
-  }
+  # sampleZero <- matrix(NA, N, S)
+  # for (s in 1:S) {
+  #   for (i in 1:n_ecol) {
+  #     for (m in 1:M[i]) {
+  #       sampleZero[sumM[i] + m, s] <- sum( logy1[sumK[sumM[i] + m] + 1:K[sumM[i] + m], s]  > 0)
+  #     }
+  #   }
+  # }
 
+  biomassInSample <- as.numeric(apply(delta_true, 1, sum) > 0)
   y <- exp(logy1) - 1
 
   # --- Output for Stan ---
@@ -215,7 +218,7 @@ simulateData <- function(data, n_s, t, L,
                     S_star = S_star,
                     # y = yimk_true,
                     logy1 = logy1,
-                    sampleZero = sampleZero,
+                    biomassInSample = biomassInSample,
                     a_sigma0 = 1,
                     b_sigma0 = 1,
                     a_sigma1 = 0.1,
@@ -232,7 +235,16 @@ simulateData <- function(data, n_s, t, L,
   params <- list(beta_z = beta_z_true,
                  beta_theta = beta_theta_true,
                  beta_w = beta_w_true,
-                 logl = logl_true)
+                 logl = logl_true,
+                 sigma_y = sigma_y,
+                 sigma = sigma,
+                 tau = tau,
+                 beta0_theta = beta0_theta,
+                 lambda = lambda,
+                 phi = phi,
+                 p = p,
+                 q = q
+                 )
 
   list("stan_data" = stan_data, "params" = params)
 }
