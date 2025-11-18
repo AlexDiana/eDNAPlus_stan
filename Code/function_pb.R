@@ -1,6 +1,15 @@
 
 logistic <- function(x) 1 / (1 + exp(-x))
 
+trnorm <- function(n, mean, sd){
+  repeat({
+    x <- rnorm(n, mean, sd = sd)
+
+    if(all(x > 0)) break
+  })
+
+  x
+}
 
 # modifying the simulate data function to incorportate my existing data
 
@@ -15,8 +24,8 @@ logistic <- function(x) 1 / (1 + exp(-x))
 simulateData <- function(data, n_s, t, L,
                          S, S_star, M, N, K,
                          ncov_theta,
-                         tau, sigma, phi, beta0_theta,
-                         lambda, p, q, sigma_u, pi0, lambda0){
+                         tau, sigma, sigma_y, phi, beta0_theta,
+                         lambda, p, q, sigma_u, mu0, sd0){
 
   n_ecol <- n_s * t * L     # total ecological field samples (site × visit × location × temporal replicate)
   N <- sum(M)                # total number of temporal replicates
@@ -42,9 +51,11 @@ simulateData <- function(data, n_s, t, L,
 
   # Choose which covariates to include in detection
   # Once this has one row per technical replicate it will need to be subsetted again.
-  X_theta <- as.matrix(data[, c("t2m_c_mean",
-                                  "total_precipitation_mm", "wind10m_ms_mean")])
-  X_theta = scale(X_theta)
+
+  X_theta <- matrix(0, nrow(data), 0)
+  # X_theta <- as.matrix(data[, c("t2m_c_mean",
+  #                                 "total_precipitation_mm", "wind10m_ms_mean")])
+  # X_theta = scale(X_theta)
   ncov_theta <- ncol(X_theta)
 
   # --- Species-level coefficients ---
@@ -73,18 +84,20 @@ simulateData <- function(data, n_s, t, L,
   # Temperature would have a nagative effect
   # Rain would have a stronger neg effect
   # wind would have a smaller neg effect
-  beta_theta_true[1,] = -0.5 #temp
-  beta_theta_true[2,] = -0.6 #rain
-  beta_theta_true[3,] = -0.01 #wind speed
+
+  # beta_theta_true[1,] = -0.5 #temp
+  # beta_theta_true[2,] = -0.6 #rain
+  # beta_theta_true[3,] = -0.01 #wind speed
 
 
   # generate the effects of environmental variables (e.g. temp and precipitation) on DETECTION PROBABILITY
   #i.e how strong is the signal of species presence?
   beta_w_true <- matrix(0, ncov_theta, S)
   # beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
-  beta_w_true[1,] = -0.5 #temp
-  beta_w_true[2,] = -0.6 #rain
-  beta_w_true[3,] = 0.01 #wind speed
+
+  # beta_w_true[1,] = -0.5 #temp
+  # beta_w_true[2,] = -0.6 #rain
+  # beta_w_true[3,] = 0.01 #wind speed
 
 
   # --- Latent abundance ---
@@ -101,6 +114,7 @@ simulateData <- function(data, n_s, t, L,
   theta_true <- logistic(matrix(beta0_theta_true, N, S, byrow = TRUE) + #create a matrix of S species and N (tech sample) rows
                            X_theta[] %*% beta_theta_true + #matrix of covariate effects on each species in each sample
                            logl_true[im_idx,] * matrix(phi, N, S, byrow = TRUE))
+
   # theta_true represents occupancy probability of each species in each sample, before technical-replicate noise is added.
   delta_true <- t(sapply(1:N, function(i) {
     sapply(1:S, function(s) rbinom(1, 1, theta_true[i, s]))
@@ -123,7 +137,7 @@ simulateData <- function(data, n_s, t, L,
 
   # --- Technical + sequencing replicates ---
   u_true <- rnorm(N2, sd = sigma_u)
-  yimk_true <- matrix(NA, N2, S + S_star)
+  logy1 <- matrix(NA, N2, S + S_star)
   # yimk will be our observed data i.e read numbers, after noise from lab process has been added.
 
   for (s in 1:(S + S_star)) { #for each species
@@ -131,25 +145,37 @@ simulateData <- function(data, n_s, t, L,
       for (m in 1:M[i]) { #for each technical sample of an ecological sample
         for (k in 1:K[sumM[i] + m]) { #for each sequence replicate of a technical replicate..
           if (s <= S) {
+
             # real species
-            cimk <- ifelse(delta_true[i, s] == 1, rbinom(1, 1, p[s]), 0) #use detection probability to determine if species is present or not
+            cimk <- ifelse(delta_true[i, s] == 1,
+                           rbinom(1, 1, p[s]),
+                           2 * rbinom(1, 1, q[s])) #use detection probability to determine if species is present or not
+
             if (cimk == 1) {
+
               lambda_simk <- exp(lambda[s] + v_true[i, s] + o_true[i] + u_true[sumK[sumM[i] + m] + k])
-              yimk_true[sumK[sumM[i] + m] + k, s] <- rpois(1, lambda_simk) #generate read count
+
+              logy1[sumK[sumM[i] + m] + k, s] <- trnorm(1, log(lambda_simk + 1), sigma_y[s]) #generate read count
+
+            } else if (cimk == 2) {
+
+              logy1[sumK[sumM[i] + m] + k, s] <- trnorm(1, mu0, sd0) #generate read count
 
             } else {
-              yimk_true[sumK[sumM[i] + m] + k, s] <- rbinom(1, 1, 1 - pi0) * rpois(1, lambda0) #simulate occasional false positives
+              # yimk_true[sumK[sumM[i] + m] + k, s] <- rbinom(1, 1, 1 - pi0) * rpois(1, lambda0) #simulate occasional false positives
+              logy1[sumK[sumM[i] + m] + k, s] <- 0#rbinom(1, 1, 1 - pi0) * rpois(1, lambda0) #simulate occasional false positives
+
             }
 
           } else {
             # spike-in species
-            cimk <- rbinom(1, 1, p[s])
-            if (cimk == 1) {
-              lambda_simk <- exp(lambda[s] + o_true[i] + u_true[sumK[sumM[i] + m] + k])
-              yimk_true[sumK[sumM[i] + m] + k, s] <- rpois(1, lambda_simk)
-            } else {
-              yimk_true[sumK[sumM[i] + m] + k, s] <- rbinom(1, 1, 1 - pi0) * rpois(1, lambda0)
-            }
+            # cimk <- rbinom(1, 1, p[s])
+            # if (cimk == 1) {
+            #   lambda_simk <- exp(lambda[s] + o_true[i] + u_true[sumK[sumM[i] + m] + k])
+            #   logy1[sumK[sumM[i] + m] + k, s] <- rpois(1, lambda_simk)
+            # } else {
+            #   logy1[sumK[sumM[i] + m] + k, s] <- rbinom(1, 1, 1 - pi0) * rpois(1, lambda0)
+            # }
           }
         }
       }
@@ -157,10 +183,19 @@ simulateData <- function(data, n_s, t, L,
   }
 
   # --- Log-transformed counts ---
-  logy1 <- log(yimk_true + 1)
-  lambda_start <- log(apply(yimk_true, 2, function(x) mean(x[x > 10])))
+  # logy1 <- log(yimk_true + 1)
+  lambda_start <- apply(logy1, 2, function(x) mean(x[x > 1]))
 
-  biomassInSample <- as.numeric(apply(delta_true, 1, sum) > 0)
+  sampleZero <- matrix(NA, N, S)
+  for (s in 1:S) {
+    for (i in 1:n_ecol) {
+      for (m in 1:M[i]) {
+        sampleZero[sumM[i] + m, s] <- sum( logy1[sumK[sumM[i] + m] + 1:K[sumM[i] + m], s]  > 0)
+      }
+    }
+  }
+
+  y <- exp(logy1) - 1
 
   # --- Output for Stan ---
   stan_data <- list(n = n_ecol,
@@ -178,9 +213,9 @@ simulateData <- function(data, n_s, t, L,
                     sumK = sumK,
                     S = S,
                     S_star = S_star,
-                    y = yimk_true,
+                    # y = yimk_true,
                     logy1 = logy1,
-                    biomassInSample = biomassInSample,
+                    sampleZero = sampleZero,
                     a_sigma0 = 1,
                     b_sigma0 = 1,
                     a_sigma1 = 0.1,

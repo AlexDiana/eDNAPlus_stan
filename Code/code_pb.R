@@ -42,73 +42,101 @@ K <- rep(4, N) #PCR replicates per replicate sample
 ncov_theta <- 2 #predictors for occupancy/detection part of model
 
 # parameters
-tau_true <- rep(.05, S) #this determines the variation or level of noise within species, between sites
-phi_true <- rep(0.5, S)
+tau_true <- rep(.5, S) #this determines the variation or level of noise within species, between sites
+phi_true <- rep(1, S)
 sigma_true <- rep(0.02, S) #variation across samples
-beta0_theta_true <- rep(0, S)
+sigma_y_true <- rep(0.5, S) #variation across samples
+beta0_theta_true <- rep(3, S)
 sigma_u_true <- 0.05
 lambda_true <- rnorm(S + S_star, mean = 20, sd = 1)
 p_true <- c(rep(.95, S), rep(1, S_star))
 
-q_true <- c(rep(.05, S), rep(1, S_star)) # prob of false positive
-pi0_true <- .95
+q_true <- c(rep(0, S), rep(1, S_star)) # prob of false positive
+# pi0_true <- .95
 # lambda0 determines the number of reads you get, when there is a false positive.
 # This can be played around with a bit, but depends on what our threshold is for removing samples with low read numbers.
-lambda0_true <- 0.05
+# lambda0_true <- 0.05
+
+mu0_true <- 1
+sd0_true <- 1
 
 list_simdata <- simulateData(cfvars, n_s, t, L,
                              S, S_star, M, N, K,
                              ncov_theta,
-                             tau_true, sigma_true, phi_true, beta0_theta_true,
+                             tau_true, sigma_true, sigma_y_true,
+                             phi_true, beta0_theta_true,
                              lambda_true, p_true, q_true,
-                             sigma_u_true, pi0_true, lambda0_true)
+                             sigma_u_true, mu0_true, sd0_true)
+
 stan_data <- list_simdata$stan_data
 params <- list_simdata$params
 
+stan_data$mu_mu0 <- 1
+stan_data$sd_mu0 <- 1
+
 # MODEL --------
 
-stan_model_compiled <- stan_model(file = here("Code","code.stan"))
+stan_model_compiled <- stan_model(file = here("Code","code_new.stan"))
 
+sampling <- T
 
-sampling <- F
+# init_fun <- function() {
+#   list(
+#     lambda = stan_data$lambda_prior
+#   )
+# }
 
 if(sampling){
   results_stan <-
     rstan::sampling(
       stan_model_compiled,
       data = stan_data,
-      pars = c("beta_z", "beta_theta","logl","v_im","lambda",
-               "sigma0","sigma","sigma1","p","phi"
+      pars = c("beta_z", "beta_theta",
+               # "logl","v_im",
+               "lambda","beta0_theta",
+               "tau","sigma","sigma_y",
+               "p","q",
+               # "logit_p","logit_q",
+               "phi","mu0","sigma0"
       ),
       # init = init_fun,
       chains = 1,
-      iter = 15000)
+      iter = 3000)
 } else {
   results_stan <-
     rstan::vb(
       stan_model_compiled,
       data = stan_data,
-      pars = c("beta_z", "beta_theta","logl","v_im","lambda",
-               "sigma0","sigma","sigma1","p","phi"
+      pars = c("beta_z", "beta_theta","logl","v_im","lambda","beta0_theta",
+               "tau","sigma","sigma_y","u_imk",
+               "p","q",
+               # "logit_p","logit_q",
+               "phi","mu0","sigma0"
       ),
       # init = init_fun,
       algorithm = "meanfield",
-      iter = 15000,
+      iter = 55000,
       # elbo_samples = 500,
+      # adapt_engaged = F,
       tol_rel_obj = 0.00001,
-      output_samples = 500)
+      output_samples = 500,
+      eta = 2)
 }
 
 # RESULTS --------
 
 matrix_results <- as.matrix(results_stan)
 
+matrix_results2 <- matrix_results %>%
+  as.data.frame
+
+texts <- colnames(matrix_results2)
+
 # effect of distance
 {
   beta_z_results <- matrix_results %>%
     as.data.frame
 
-  texts <- colnames(beta_z_results)
   # pattern <- sprintf("\\[%d,", L + 2)
   pattern <- sprintf("\\[%d,", 2)
   selected <- grepl(pattern, texts) & grepl("beta_z", texts)
@@ -142,10 +170,12 @@ matrix_results <- as.matrix(results_stan)
           legend.text = element_text(size = 14)) +
 
     ggtitle('Distance')
-  # distanceef
+
+  distanceef
 
 }
 
+# effect of season
 {
   beta_z_results <- matrix_results %>%
     as.data.frame
@@ -179,8 +209,271 @@ matrix_results <- as.matrix(results_stan)
           axis.title =element_text(size = 14),
           legend.text = element_text(size = 14)) +
     ggtitle("Season")
-  # seasonef
+
+  seasonef
 }
+
+# phi
+{
+  phi_results <- matrix_results %>%
+    as.data.frame
+  selected <- grepl("phi", texts)
+  # on each column, calculate the 95% credible intervals
+  phi_results <- phi_results[,selected] %>%
+    apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
+    as.data.frame
+
+  phi_results$True <- as.vector(params$phi)
+
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+
+  phi_plot = ggplot(phi_results, aes(x = 1:nrow(phi_results),
+                                          y = True,
+                                          ymin = `2.5%`,
+                                          ymax = `97.5%`)) +
+    geom_errorbar() +
+    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of season on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+    ggtitle("Season")
+
+  phi_plot
+}
+
+# sigma_y
+{
+  sigma_y_results <- matrix_results %>%
+    as.data.frame
+  selected <- grepl("sigma_y", texts)
+  # on each column, calculate the 95% credible intervals
+  sigma_y_results <- sigma_y_results[,selected] %>%
+    apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
+    as.data.frame
+
+  sigma_y_results$True <- as.vector(params$sigma_y)
+
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+  sigmay_plot = ggplot(sigma_y_results, aes(x = 1:nrow(sigma_y_results),
+                                          y = True,
+                                          ymin = `2.5%`,
+                                          ymax = `97.5%`)) +
+    geom_errorbar() +
+    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of season on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+    ggtitle("Sigma y")
+
+  sigmay_plot
+}
+
+# tau
+{
+  tau_results <- matrix_results %>%
+    as.data.frame
+  selected <- grepl("tau", texts)
+  # on each column, calculate the 95% credible intervals
+  tau_results <- tau_results[,selected] %>%
+    apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
+    as.data.frame
+
+  tau_results$True <- as.vector(params$tau)
+
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+  tau_plot = ggplot(tau_results, aes(x = 1:nrow(tau_results),
+                                          y = True,
+                                          ymin = `2.5%`,
+                                          ymax = `97.5%`)) +
+    geom_errorbar() +
+    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of season on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+    ggtitle("Sigma y")
+
+  tau_plot
+}
+
+# lambda
+{
+  lambda_results <- matrix_results %>%
+    as.data.frame
+  selected <- grepl("lambda", texts)
+  # on each column, calculate the 95% credible intervals
+  lambda_results <- lambda_results[,selected] %>%
+    apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
+    as.data.frame
+
+  lambda_results$True <- as.vector(params$lambda)
+
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+  lambda_plot = ggplot(lambda_results, aes(x = 1:nrow(lambda_results),
+                                          y = True,
+                                          ymin = `2.5%`,
+                                          ymax = `97.5%`)) +
+    geom_errorbar() +
+    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of season on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+    ggtitle("Sigma y")
+
+  lambda_plot
+}
+
+# p
+{
+  p_results <- matrix_results %>%
+    as.data.frame
+  selected <- grepl("p", texts) & !grepl("phi", texts) & !grepl("lp", texts)
+  # on each column, calculate the 95% credible intervals
+  p_results <- p_results[,selected] %>%
+    apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
+    as.data.frame
+
+  p_results$True <- as.vector(params$p)
+
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+  p_plot = ggplot(p_results, aes(x = 1:nrow(p_results),
+                                          y = True,
+                                          ymin = `2.5%`,
+                                          ymax = `97.5%`)) +
+    geom_errorbar() +
+    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of season on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+    ggtitle("p")
+
+  p_plot
+}
+
+# q
+{
+  q_results <- matrix_results %>%
+    as.data.frame
+  selected <- grepl("q", texts)
+  # on each column, calculate the 95% credible intervals
+  q_results <- q_results[,selected] %>%
+    apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
+    as.data.frame
+
+  q_results$True <- as.vector(params$q)
+
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+  q_plot = ggplot(q_results, aes(x = 1:nrow(q_results),
+                                          y = True,
+                                          ymin = `2.5%`,
+                                          ymax = `97.5%`)) +
+    geom_errorbar() +
+    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of season on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+    ggtitle("Sigma y")
+
+  q_plot
+}
+
+# u_imk
+{
+  uimk_results <- matrix_results %>%
+    as.data.frame
+  selected <- grepl("u", texts)
+  # on each column, calculate the 95% credible intervals
+  uimk_results <- uimk_results[,selected] %>%
+    apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
+    as.data.frame
+
+  uimk_results$True <- as.vector(params$u)
+
+  species_names <- c("Brown Long-eared",
+                     "Greater Horsehoe",
+                     "Lesser Horseshoe")
+  q_plot = ggplot(q_results, aes(x = 1:nrow(q_results),
+                                          # y = True,
+                                          ymin = `2.5%`,
+                                          ymax = `97.5%`)) +
+    geom_errorbar() +
+    # geom_point(aes(colour = "Latent (true) effect"), size = 3) +
+    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    # ylim(-1, 0) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    scale_x_continuous(breaks = 1:S, labels = species_names) +
+    xlab('Species') +
+    ylab('Effect of season on DNA biomass') +
+    theme_classic() +
+    theme(axis.text = element_text(size = 14),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title =element_text(size = 14),
+          legend.text = element_text(size = 14)) +
+    ggtitle("Sigma y")
+
+  q_plot
+}
+
+View(t(apply(matrix_results, 2, function(x) quantile(x, probs = c(0.025, 0.975)))))
 
 distanceef+seasonef + plot_layout(guides = 'collect')
 
