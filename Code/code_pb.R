@@ -36,9 +36,9 @@ n_ecol <- n_s * t * L
 
 S <- 3
 S_star <- 0 #spike-in control species
-M <- rep(3, n_ecol) #temporal replicates per sample
-N <- sum(M) #total temporal replicates
-K <- rep(4, N) #PCR replicates per replicate sample
+M_n <- 3 #temporal replicates per sample
+N <- M_n * n_ecol #total temporal replicates
+K_n <- 4 #PCR replicates per replicate sample
 ncov_theta <- 2 #predictors for occupancy/detection part of model
 
 # parameters
@@ -50,8 +50,7 @@ beta0_theta_true <- rep(3, S) # baseline detection rate
 sigma_u_true <- 0.05 # PCR noise
 lambda_true <- rnorm(S + S_star, mean = 20, sd = 1)
 p_true <- c(rep(.95, S), rep(1, S_star))
-
-q_true <- c(rep(0, S), rep(1, S_star)) # prob of false positive
+q_true <- c(rep(0.05, S), rep(1, S_star)) # prob of false positive
 # pi0_true <- .95
 # lambda0 determines the number of reads you get, when there is a false positive.
 # This can be played around with a bit, but depends on what our threshold is for removing samples with low read numbers.
@@ -61,7 +60,7 @@ mu0_true <- 1
 sd0_true <- 1
 
 list_simdata <- simulateData(cfvars, n_s, t, L,
-                             S, S_star, M, N, K,
+                             S, S_star, M_n, N, K_n,
                              ncov_theta,
                              tau_true, sigma_true, sigma_y_true,
                              phi_true, beta0_theta_true,
@@ -101,7 +100,7 @@ if(sampling){
       ),
       # init = init_fun,
       chains = 1,
-      iter = 3000)
+      iter = 5000)
 } else {
   results_stan <-
     rstan::vb(
@@ -125,28 +124,25 @@ if(sampling){
 
 # RESULTS --------
 
-matrix_results <- as.matrix(results_stan)
-
-matrix_results2 <- matrix_results %>%
+matrix_results <- as.matrix(results_stan) %>%
   as.data.frame
 
-texts <- colnames(matrix_results2)
+texts <- colnames(matrix_results)
 
 # effect of distance
 {
-  beta_z_results <- matrix_results %>%
-    as.data.frame
+
+  distance_effects <- matrix_results[,grepl(paste0("beta_z\\[",t), texts) ]
 
   # pattern <- sprintf("\\[%d,", L + 2)
-  pattern <- sprintf("\\[%d,", 2)
+  pattern <- sprintf("\\[%d,", 1)
   selected <- grepl(pattern, texts) & grepl("beta_z", texts)
   # on each column, calculate the 95% credible intervals
-  beta_z_results <- beta_z_results[,selected] %>%
+  beta_z_results <- distance_effects %>%
     apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
     as.data.frame
 
-  # beta_z_results$True <- as.vector(params$beta_z[L+2,])
-  beta_z_results$True <- as.vector(params$beta_z[2,])
+  beta_z_results$True <- as.vector(params$beta_z[t,])
 
   species_names <- c("Brown Long-eared",
                      "Greater Horsehoe",
@@ -175,23 +171,31 @@ texts <- colnames(matrix_results2)
 
 }
 
-# effect of season
+# effect of distance
+
+visit_effects <- matrix_results[,grepl("beta_z\\[[1-3],", texts) ]
+
 {
-  beta_z_results <- matrix_results %>%
-    as.data.frame
-  pattern <- sprintf("\\[%d,", 1)
-  selected <- grepl(pattern, texts) & grepl("beta_z", texts)
+  # pattern <- sprintf("\\[%d,", 1)
+  # pattern = paste(sprintf("\\[%d,", 2), collapse = "|")
+  # selected <- grepl(pattern, texts) & grepl("beta_z", texts)
   # on each column, calculate the 95% credible intervals
-  beta_z_results <- beta_z_results[,selected] %>%
+  # beta_z_results <- matrix_results[,selected] %>%
+  beta_z_results <- visit_effects %>%
     apply(., 2, function(x) quantile(x, probs = c(0.025, 0.975))) %>% t %>%
     as.data.frame
 
-  beta_z_results$True <- as.vector(params$beta_z[1,])
+  beta_z_results$True <- as.vector(params$beta_z[1:(t-1),])
+
 
   species_names <- c("Brown Long-eared",
                      "Greater Horsehoe",
                      "Lesser Horseshoe")
-  seasonef = ggplot(beta_z_results, aes(x = 1:nrow(beta_z_results),
+  Visits = c("March", "May", "June", "September")
+  beta_z_results$Species <- rep(species_names, each = t - 1)
+  beta_z_results$Visit <- factor(rep(Visits[-1], times = S), levels = c('May', 'June', 'September'))
+
+  seasonef = ggplot(beta_z_results, aes(x = Visit,
                                           y = True,
                                           ymin = `2.5%`,
                                           ymax = `97.5%`)) +
@@ -200,14 +204,17 @@ texts <- colnames(matrix_results2)
     scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
     # ylim(-1, 0) +
     geom_hline(yintercept = 0, linetype = 'dashed') +
-    scale_x_continuous(breaks = 1:S, labels = species_names) +
-    xlab('Species') +
+    # scale_x_continuous(breaks = 1:t, labels = Visits) +
+    xlab('Visit') +
     ylab('Effect of season on DNA biomass') +
+    facet_wrap(~Species, scales = 'free') +
     theme_classic() +
     theme(axis.text = element_text(size = 14),
           axis.text.x = element_text(angle = 45, hjust = 1),
           axis.title =element_text(size = 14),
-          legend.text = element_text(size = 14)) +
+          legend.text = element_text(size = 14),
+          strip.background = element_blank()) +
+    # ylim(-1,8) +
     ggtitle("Season")
 
   seasonef

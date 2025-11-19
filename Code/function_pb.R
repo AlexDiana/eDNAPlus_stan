@@ -24,14 +24,16 @@ trnorm <- function(n, mean, sd){
 # tau, sigma, phi, beta0_theta,
 # lambda, p, q, sigma_u, pi0, lambda0
 simulateData <- function(data, n_s, t, L,
-                         S, S_star, M, N, K,
+                         S, S_star, M_n, N, K_n,
                          ncov_theta,
                          tau, sigma, sigma_y, phi, beta0_theta,
                          lambda, p, q, sigma_u, mu0, sd0){
 
   n_ecol <- n_s * t * L     # total ecological field samples (site × visit × location × temporal replicate)
-  N <- sum(M)                # total number of temporal replicates
-  N2 <- sum(K)               # total number of PCR replicates
+  M = rep(M_n, n_ecol) # temporal replicates per sample
+  N <- sum(M)     # total number of temporal replicates
+  K <- rep(K_n, N) #PCR replicates per replicate sample
+  N2 <- sum(K)
 
   # --- Index helpers ---
   # site_id     <- rep(1:L, each = t * n_t)
@@ -42,15 +44,34 @@ simulateData <- function(data, n_s, t, L,
   sumM <- c(0, cumsum(M)[-n_ecol])
   sumK <- c(0, cumsum(K)[-N])
 
-  # create dataframe of each visit to each site
-  # Build design matrix from real cfvars
-  data_sub = data %>% group_by(Name,Visit) %>% filter(row_number() == 1)
-  data_sub$Visit <- scale(data_sub$Visit)
-  # X_z <- model.matrix(~ factor(Name) + factor(Visit) + dist_m_scale - 1, data = data_sub)
-  X_z <- model.matrix(~ Visit + dist_m_scale - 1, data = data_sub)
-  # X_z <- model.matrix(~ factor(Name) + Visit + dist_m_scale - 1, data = data_sub)
+  # # create dataframe of each visit to each site
+  # # Build design matrix from real cfvars
+  # data_sub = data %>% group_by(Name,Visit) %>% filter(row_number() == 1)
+  # # data_sub$Visit <- scale(data_sub$Visit)
+  # # X_z <- model.matrix(~ factor(Name) + factor(Visit) + dist_m_scale - 1, data = data_sub)
+  # X_z <- model.matrix(~ factor(Visit) + dist_m_scale - 1, data = data_sub)
+  # # X_z <- model.matrix(~ factor(Name) + Visit + dist_m_scale - 1, data = data_sub)
+
+  # simulate distances of each site.- grouped around 0,50,100,150
+  set.seed(123)
+  group_centers = c(0,50,100,150)
+  weights = c(3/19,8/19,4/19,4/19) #weights based on real distribution in canada farm
+  distances = sample(group_centers, L, replace = TRUE, prob = weights) + rnorm(L, sd = 5)
+  # any negative values should bemade 0
+  distances[distances < 0] <- 0
+  # for simulations, we want to make a new dataset, with even distances between 0-150m
+  X_z_settings <-
+    data.frame(Location = rep(1:L, each = t),
+               Time = rep(rep(1:t, times = L), n_s),
+               Distance_scaled = scale(rep(distances, each = t)))
+
+  X_z <- model.matrix(~ factor(Time) + Distance_scaled - 1, X_z_settings)
+  X_z <- X_z[,-1]
+
   ncov_z = ncol(X_z)
 
+
+  # commenting this out for now to check if correlation with weather variables is affecting season
   # Choose which covariates to include in detection
   # Once this has one row per technical replicate it will need to be subsetted again.
 
@@ -60,27 +81,47 @@ simulateData <- function(data, n_s, t, L,
   # X_theta = scale(X_theta)
   ncov_theta <- ncol(X_theta)
 
+  # X_theta <- as.matrix(data[, c("t2m_c_mean",
+  #                                 "total_precipitation_mm", "wind10m_ms_mean")])
+  # X_theta = scale(X_theta)
+  # ncov_theta <- ncol(X_theta)
+
+  # X_theta <- matrix(rnorm(N * ncov_theta), N, ncov_theta)
+
   # --- Species-level coefficients ---
   # Here we are generating coefficients i.e how each variable affects abundance of each species
 
   #generate coefficients of each variable on each species
   # this was previously random, but i'm adding in directions
+
+  # first, create empty matrix with the same number of rows as variables.
   beta_z_true = matrix(0, ncol(X_z), S)
 
   # no effect of sampling location
   # beta_z_true[grep("Name", colnames(X_z)), ] <- 0
 
-  # Positive effect of visit
-  beta_z_true[grep("Visit", colnames(X_z)), ] <- c(4,2,0)   # or any positive value you like, different values for species
+  # Positive effect of visit - continuous
+  # beta_z_true[grep("Visit", colnames(X_z)), ] <- c(4,2,0)   # or any positive value you like, different values for species
+
+  # effect of visit - factor (4 levels) - here I've added a parabolic effect so
+  # logl should be highest during visit 2 and 3 (summer) and drop off either side
+  beta_z_true[grep("Time", colnames(X_z)), ] <-
+    rbind(
+      # c(0,0,0),  # Visit1 (reference)
+      c(6, 3, 1),  # Visit2
+      c(7, 4, 2),  # Visit3
+      c(2, 1, 0)   # Visit4
+    )
 
   # Negative effect of distance
-  beta_z_true[grep("dist_m", colnames(X_z)), ] <- c(-1,-5,-10) # adjust magnitude if you want
+  beta_z_true[grep("Distance_scaled", colnames(X_z)), ] <- c(-1,-5,-10) # adjust magnitude if you want
 
 
   # randomly generate the effects of environmental variables (e.g. temp and precipitation) on OCCUPANCY
   # i.e is the species present or not
   # At the moment this is random, but you could assign directions/intensity across species.
   # Each column is a species.
+
   beta_theta_true <- matrix(0, ncov_theta, S)
   # beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
   # Temperature would have a nagative effect
@@ -91,12 +132,31 @@ simulateData <- function(data, n_s, t, L,
   # beta_theta_true[2,] = -0.6 #rain
   # beta_theta_true[3,] = -0.01 #wind speed
 
+  # commenting this out for now to check if correlation with weather variables is affecting season
+  # beta_theta_true <- matrix(0, ncov_theta, S)
+  # # beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
+  # # Temperature would have a nagative effect
+  # # Rain would have a stronger neg effect
+  # # wind would have a smaller neg effect
+  # beta_theta_true[1,] = -0.5 #temp
+  # beta_theta_true[2,] = -0.6 #rain
+  # beta_theta_true[3,] = -0.01 #wind speed
 
   # generate the effects of environmental variables (e.g. temp and precipitation) on DETECTION PROBABILITY
   #i.e how strong is the signal of species presence?
   beta_w_true <- matrix(0, ncov_theta, S)
   # beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
 
+  # beta_z_true <- matrix(sample(c(-1,1,0), ncov_z * S, replace = T), ncov_z, S)
+  # beta_theta_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = T), ncov_theta, S)
+  # beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = T), ncov_theta, S)
+
+
+  # commenting this out for now to check if correlation with weather variables is affecting season
+  # # generate the effects of environmental variables (e.g. temp and precipitation) on DETECTION PROBABILITY
+  # #i.e how strong is the signal of species presence?
+  # beta_w_true <- matrix(0, ncov_theta, S)
+  # # beta_w_true <- matrix(sample(c(-1,1), ncov_theta * S, replace = TRUE), ncov_theta, S)
   # beta_w_true[1,] = -0.5 #temp
   # beta_w_true[2,] = -0.6 #rain
   # beta_w_true[3,] = 0.01 #wind speed
@@ -205,8 +265,8 @@ simulateData <- function(data, n_s, t, L,
                     ncov_z = ncov_z,
                     X_z = X_z,
                     N = N,
-                    N2 = N2,
                     M = M,
+                    N2 = N2,
                     sumM = sumM,
                     ncov_theta = ncov_theta,
                     X_theta = X_theta[im_idx, ],
@@ -247,8 +307,69 @@ simulateData <- function(data, n_s, t, L,
                  )
 
   list("stan_data" = stan_data, "params" = params)
-}
+} # End of simulateData function
 
 
+# Function to run one simulation and model fit
+run_simulation <- function(iterations, data, n_s, t, L,
+                           S, S_star, M_n, N, K_n,
+                           ncov_theta,
+                           tau, sigma, phi, beta0_theta,
+                           lambda, p, q, sigma_u, pi0,
+                           lambda0, ...) {
+  all_draws = list() #store posterior draws
+
+  for (iter_id in 1:iterations) {
+    print(paste("Starting iteration", iter_id))
+    sim_data <- simulateData(data, n_s, t, L,
+                           S, S_star, M_n, N, K_n,
+                           ncov_theta,
+                           tau, sigma, phi, beta0_theta,
+                           lambda, p, q, sigma_u, pi0,
+                           lambda0)
+
+    stan_data <- sim_data$stan_data
+    params <- sim_data$params
+    print('data simulated successfully')
+
+    fit <- rstan::vb(
+      stan_model_compiled,
+      data = stan_data,
+      pars = c("beta_z"),
+      algorithm = "meanfield",
+      iter = 15000,
+      tol_rel_obj = 0.00001,
+      output_samples = 500,
+      refresh = 0
+    )
+
+    # Extract posterior values
+    matrix_results <- as.matrix(fit)
+    beta_z_cols <- grep("beta_z", colnames(matrix_results))
+
+    draws_df = as_tibble(matrix_results[, beta_z_cols])
+    draws_df$iteration = iter_id
+    all_draws[[iter_id]] = draws_df
+  } # End of iterations loop
+
+  # Combine all draws
+  combined_draws <- bind_rows(all_draws)
+  # convert to long form
+  combined_draws2 = combined_draws %>%
+    pivot_longer(cols = -iteration,
+                 names_to = "coefficient",
+                 values_to = "value")
+
+  summary_df = combined_draws2 %>%
+    group_by(coefficient) %>%
+    summarise(mean = mean(value),
+              lower = quantile(value, 0.025),
+              upper = quantile(value, 0.975),
+              .groups = 'drop') %>%
+    mutate(L = L,
+           n_iterations = iterations)
+
+    return(summary_df)
+} # End of run_simulation function
 
 
