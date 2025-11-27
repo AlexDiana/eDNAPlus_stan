@@ -91,7 +91,7 @@ if(sampling){
       stan_model_compiled,
       data = stan_data,
       pars = c("beta_z", "beta_theta",
-               # "logl","v_im",
+                "logl","v_im",
                "lambda","beta0_theta",
                "tau","sigma","sigma_y",
                "p","q",
@@ -99,8 +99,10 @@ if(sampling){
                "phi","mu0","sigma0"
       ),
       # init = init_fun,
-      chains = 1,
-      iter = 5000)
+      chains = 4,
+      iter = 5000,
+      cores = 4,
+      control = list(max_treedepth = 15))
 } else {
   results_stan <-
     rstan::vb(
