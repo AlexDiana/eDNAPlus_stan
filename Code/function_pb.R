@@ -316,7 +316,7 @@ run_simulation <- function(iterations, data, n_s, t, L,
                            ncov_theta,
                            tau, sigma, phi, beta0_theta,
                            lambda, p, q, sigma_u, pi0,
-                           lambda0, ...) {
+                           lambda0, sampling = T, ...) {
   all_draws = list() #store posterior draws
 
   for (iter_id in 1:iterations) {
@@ -332,16 +332,35 @@ run_simulation <- function(iterations, data, n_s, t, L,
     params <- sim_data$params
     print('data simulated successfully')
 
-    fit <- rstan::vb(
-      stan_model_compiled,
-      data = stan_data,
-      pars = c("beta_z"),
-      algorithm = "meanfield",
-      iter = 15000,
-      tol_rel_obj = 0.00001,
-      output_samples = 500,
-      refresh = 0
-    )
+    if(sampling){
+      fit <-
+        rstan::sampling(
+          stan_model_compiled,
+          data = stan_data,
+          pars = c("beta_z",
+                   "logl"),
+          # init = init_fun,
+          chains = 4,
+          iter = 5000,
+          cores = 4,
+          control = list(max_treedepth = 15),
+          refresh = 0)
+    } else {
+     fit <-
+        rstan::vb(
+          stan_model_compiled,
+          data = stan_data,
+          pars = c("beta_z", "logl"),
+          # init = init_fun,
+          algorithm = "meanfield",
+          iter = 55000,
+          # elbo_samples = 500,
+          # adapt_engaged = F,
+          tol_rel_obj = 0.00001,
+          output_samples = 500,
+          eta = 2,
+          refresh = 0)
+    }
 
     # Extract posterior values
     matrix_results <- as.matrix(fit)
