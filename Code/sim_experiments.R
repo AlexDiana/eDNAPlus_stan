@@ -54,16 +54,6 @@ lambda0_true <- 0.05
 
 
 source(here("Code","function_pb.R"))
-# Run all simulations in parallel
-results_all <- future_lapply(L_values, function(L) {
-  map_df(1:iterations, ~ run_simulation(.x, cfvars, n_s, t, L, S, S_star,
-                                        M_n, N, K_n, ncov_theta,
-                                        tau_true, sigma_true, phi_true,
-                                        beta0_theta_true, lambda_true,
-                                        p_true, q_true, sigma_u_true,
-                                        pi0_true, lambda0_true,
-                                        ))
-}) %>% bind_rows()
 
 L_values = c(10, 50, 100, 150, 200)
 iterations <- 20
