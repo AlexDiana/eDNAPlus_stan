@@ -56,7 +56,7 @@ lambda0_true <- 0.05
 source(here("Code","function_pb.R"))
 
 L_values = c(10, 50, 100, 150, 200)
-iterations <- 20
+iterations <- 1
 
 # run for each value of L
 results_all = map_df(L_values, function(L){
@@ -65,7 +65,7 @@ results_all = map_df(L_values, function(L){
                  tau_true, sigma_true, phi_true,
                  beta0_theta_true, lambda_true,
                  p_true, q_true, sigma_u_true,
-                 pi0_true, lambda0_true,
+                 pi0_true, lambda0_true, sampling = F
   )
 })
 
