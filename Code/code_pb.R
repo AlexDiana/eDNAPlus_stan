@@ -147,31 +147,32 @@ texts <- colnames(matrix_results)
   beta_z_results$True <- as.vector(params$beta_z[t,])
 
   species_names <- c("Brown Long-eared",
-                     "Greater Horsehoe",
+                     "Greater Horseshoe",
                      "Lesser Horseshoe")
   distanceef = ggplot(beta_z_results, aes(x = 1:nrow(beta_z_results),
                              y = True,
                              ymin = `2.5%`,
                              ymax = `97.5%`)) +
-    geom_errorbar() +
-    geom_point(aes(colour = "Latent (true) effect"), size = 3) +
-    scale_colour_manual(name = "", values = c("Latent (true) effect" = "darkgreen")) + # legend text + colour
+    geom_errorbar(linewidth = 1) +
+    geom_point(aes(colour = "True effect"), size = 4) +
+    scale_colour_manual(name = "", values = c("True effect" = "darkgreen")) + # legend text + colour
     # ylim(-1, 0) +
     geom_hline(yintercept = 0, linetype = 'dashed') +
     scale_x_continuous(breaks = 1:S, labels = species_names) +
     xlab('Species') +
-    ylab('Effect of distance from roost on DNA biomass') +
+    ylab('Effect of distance from roost on \n DNA biomass') +
     theme_classic() +
-    theme(axis.text = element_text(size = 14),
+    theme(axis.text = element_text(size = 18),
           axis.text.x = element_text(angle = 45, hjust = 1),
-          axis.title =element_text(size = 14),
-          legend.text = element_text(size = 14)) +
+          axis.title =element_text(size = 18),
+          legend.text = element_text(size = 14),
+          legend.position = "top") +
+    coord_flip()
 
-    ggtitle('Distance')
 
   distanceef
 
-}
+  }
 
 # effect of distance
 
@@ -193,9 +194,9 @@ visit_effects <- matrix_results[,grepl("beta_z\\[[1-3],", texts) ]
   species_names <- c("Brown Long-eared",
                      "Greater Horsehoe",
                      "Lesser Horseshoe")
-  Visits = c("March", "May", "June", "September")
+  Visits = c("May", "June", "September")
   beta_z_results$Species <- rep(species_names, each = t - 1)
-  beta_z_results$Visit <- factor(rep(Visits[-1], times = S), levels = c('May', 'June', 'September'))
+  beta_z_results$Visit <- factor(rep(Visits, times = S), levels = c('May', 'June', 'September'))
 
   seasonef = ggplot(beta_z_results, aes(x = Visit,
                                           y = True,

@@ -33,7 +33,7 @@ simulateData <- function(data, n_s, t, L,
   M = rep(M_n, n_ecol) # temporal replicates per sample
   N <- sum(M)     # total number of temporal replicates
   K <- rep(K_n, N) #PCR replicates per replicate sample
-  N2 <- sum(K)
+  N2 <- sum(K)     # total number of sequencing replicates
 
   # --- Index helpers ---
   # site_id     <- rep(1:L, each = t * n_t)
