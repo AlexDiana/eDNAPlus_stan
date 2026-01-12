@@ -1,35 +1,5 @@
 # runmodel
-
-options(repos = list(CRAN="http://cran.rstudio.com/"))
-
-pkgLoad <- function( packages = "favourites" ) {
-
-  if( length( packages ) == 1L && packages == "favourites" ) {
-    packages <- c('here',"rjags", "rstan", "coda", "tidyverse", "ggplot2", "patchwork")  }
-
-  packagecheck <- match( packages, utils::installed.packages()[,1] )
-
-  packagestoinstall <- packages[ is.na( packagecheck ) ]
-
-  if( length( packagestoinstall ) > 0L ) {
-    utils::install.packages( packagestoinstall,
-                             repos = "http://cran.csiro.au",
-    )
-  } else {
-    print( "All requested packages already installed" )
-  }
-
-  for( package in packages ) {
-    suppressPackageStartupMessages(
-      library( package, character.only = TRUE, quietly = TRUE )
-    )
-  }
-
-}
-pkgLoad('favourites')
-
-
-
+setwd('/home/pbevan/eDNAPlus_stan')
 library(here)
 library(rjags)
 library(rstan)
@@ -245,4 +215,4 @@ if(sampling){
       output_samples = 500,
       eta = 2)
 }
-
+saveRDS(results_stan, 'output/results_stan_250109')
