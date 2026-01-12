@@ -174,7 +174,7 @@ stan_data <- list(n = n,
                   lambda_prior = lambda_start
 )
 # run mcmc?
-sampling = F
+sampling = T
 stan_model_compiled <- stan_model(file = here("Code","code_new.stan"))
 stan_data$mu_mu0 <- 1
 stan_data$sd_mu0 <- 1
@@ -217,4 +217,4 @@ if(sampling){
       output_samples = 500,
       eta = 2)
 }
-saveRDS(results_stan, 'output/results_stan_250112_bats.rds')
+saveRDS(results_stan, 'output/results_stan_250112_batsmcmc.rds')
