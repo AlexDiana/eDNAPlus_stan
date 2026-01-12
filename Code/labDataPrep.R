@@ -185,8 +185,14 @@ species_list = unique(sd_long2[,c('ASV_ID',"Class", "Order",'Family','Genus','Sp
 species_list$SpeciesID = ifelse(species_list$Species != "", species_list$Species, species_list$Genus)
 species_list$SpeciesID = ifelse(species_list$SpeciesID != "", species_list$SpeciesID, species_list$Family)
 
+
 species_list$SpeciesID[species_list$Status == 'Contaminant'] = "Contaminant"
 species_list$SpeciesID[species_list$Status== "Unassigned"] = "Unassigned"
+
+# but, we want to keep cows separate because there are actually cows in the area
+species_list$SpeciesID[species_list$Genus== "Bos"] = "Bos taurus" #cow
+# later on we will remove BOS labelled as NUMT
+
 
 species_list$SpeciesID[species_list$Genus== "Meles"] = "Meles meles" #badger
 species_list$SpeciesID[species_list$Order== "Primates" & species_list$Species==""] = "Contaminant" #humans
@@ -207,17 +213,29 @@ species_list$SpeciesID[species_list$Genus== "Apodemus"] = "Apodemus spp."
 species_list$SpeciesID[species_list$Family== "Sciuridae"] = "Sciurus spp."
 # bufo
 species_list$SpeciesID[species_list$Genus== "Bufo"] = "Bufo spp."
+# there is only one sample where pipistrelles nathusii was found, so lets group all pipistelles together
+species_list$SpeciesID[species_list$Genus== "Pipistrellus"] = "Pipistrellus spp."
+# myotis can be grouped together.
+species_list$SpeciesID[species_list$Genus== "Myotis"] = "Myotis spp."
+
+# group all birds together
+species_list$SpeciesID[species_list$Class== "Aves"] = "Bird"
+
+# we could group by functional group - deer, small mammal,
+species_list$SpeciesID[species_list$Family=='Cervidae'] = "Cervidae"
+# small mammals - hedgehog, rabbit, rodents, Soricomorpha (shrews),
+species_list$SpeciesID[species_list$Order %in% c('Erinaceomorpha', "Lagomorpha", "Rodentia", 'Soricomorpha')] = "Small Mammal"
+species_list$SpeciesID[species_list$Order== 'Carnivora'] = "Medium Mammal"
+# amphibians
+species_list$SpeciesID[species_list$Class== "Amphibia"] = "Amphibian"
 
 # assign NUMT as NUMT
-species_list$SpeciesID[species_list$Status== "NUMT"] = "NUMT"
+species_list$SpeciesID[species_list$Status== "NUMT"] = "Contaminant"
 species_list$SpeciesID[grepl("Synthetic", species_list$Status)] = "Synthetic"
 
 unique(species_list$SpeciesID)
 
-# there are 74 species. another thing we could do is group all birds together
-
-
-
+# i've got this down to 17 species groups.
 
 # for now, join species_ID back up with sd_long2
 sd_long3 = left_join(sd_long2, species_list[,c('ASV_ID','SpeciesID')], by = c("ASV_ID" = "ASV_ID"), relationship = "many-to-many")
