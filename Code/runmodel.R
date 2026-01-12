@@ -59,7 +59,9 @@ n_ecol = nrow(sites_ecol)
 #  "biomassInSample"
 #   a_sigma0"        "b_sigma0"        "a_sigma1"        "b_sigma1"
 # [22] "a_p"             "b_p"             "a_q"             "b_q"             "a_theta0"        "b_theta0"        "lambda_prior"
+# for testing - lets subset to bat data only
 
+sd = sd %>% filter(Order == "Chiroptera") %>% droplevels()
 
 n = n_ecol #94
 # n covariates = number of visits (minus reference value) + 1 for distance
@@ -215,4 +217,4 @@ if(sampling){
       output_samples = 500,
       eta = 2)
 }
-saveRDS(results_stan, 'output/results_stan_250109')
+saveRDS(results_stan, 'output/results_stan_250112_bats.rds')
