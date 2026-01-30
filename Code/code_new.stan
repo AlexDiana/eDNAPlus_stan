@@ -24,7 +24,6 @@ data {
 
   // number of species
   int<lower = 0> S;
-  // number of spike ins
   int<lower = 0> S_star;
 
   // survey level information
@@ -123,13 +122,13 @@ model {
 
   sigma0 ~ gamma(a_sigma0, b_sigma0);
 
-  to_vector(beta_z) ~ normal(0, 10);
-  to_vector(beta_w) ~ normal(0, 10);
-  to_vector(beta_theta) ~ normal(0, 10);
+  to_vector(beta_z) ~ normal(0, 2);
+  to_vector(beta_w) ~ normal(0, 2);
+  to_vector(beta_theta) ~ normal(0, 2);
 
 
   mu0 ~ normal(mu_mu0, sd_mu0);
-  phi ~ normal(0, 10);
+  phi ~ normal(0, 2);
   tau ~ gamma(1, 1);
   sigma ~ gamma(1, 1);
 
@@ -142,7 +141,7 @@ model {
   // logit_q ~ normal(-2.2, 1);
   sigma_y ~ gamma(a_sigma1, b_sigma1);
 
-  u_imk ~ normal(0, 10);
+  u_imk ~ normal(0, 2);
 
   // to_vector(v_im) ~ normal(0, 10);
 
