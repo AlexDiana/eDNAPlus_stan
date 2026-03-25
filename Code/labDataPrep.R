@@ -446,7 +446,6 @@ unique(species_list$SpeciesID)
 species_list$SpeciesID[species_list$SpeciesID == "Rhinolophus"] = "Rhinolophus spp."
 species_list$SpeciesID[species_list$SpeciesID == "Plecotus"] = "Plecotus spp."
 
-
 # there is an ASV read for Plecotus auritus but no reads in any samples.
 
 # i've got this down to 18 species groups.
@@ -476,13 +475,13 @@ missing_sd = missing_sd[!grepl("CFEB", missing_sd)]
 
 missing_sd = c(missing_ids2, missing_sd)
 
-missing_sample = unique(sd_long2[,1:14])
+missing_sample = unique(sd_long3[,1:14])
 
 names(sd_long3)
 missing_sq = sq1[1,]
 missing_sq[,4:7] = NA
 
-"CFAN1V5rep3"
+# "CFAN1V5rep3"
 # this is getting into missing_sd.
 # missing_sd
 # these have been coverted to CFANN1V5... rep3 is missing from the metabarcoding data.
