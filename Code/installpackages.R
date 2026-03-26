@@ -3,8 +3,8 @@ options(repos = list(CRAN="http://cran.rstudio.com/"))
 pkgLoad <- function( packages = "favourites" ) {
 
   if( length( packages ) == 1L && packages == "favourites" ) {
-    packages <- c('here',"rjags", "rstan", "coda", "tidyverse", "ggplot2", "sf", "patchwork")  }
-
+    packages <- c('here',"rjags", "rstan", "coda", "tidyverse", "ggplot2", "patchwork")  }
+ß
   packagecheck <- match( packages, utils::installed.packages()[,1] )
 
   packagestoinstall <- packages[ is.na( packagecheck ) ]
