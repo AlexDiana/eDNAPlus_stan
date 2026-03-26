@@ -1,5 +1,5 @@
 # runmodel
-setwd('/home/pbevan/eDNAPlus_stan')
+# setwd('/home/pbevan/eDNAPlus_stan')
 library(here)
 library(rjags)
 library(rstan)
@@ -11,30 +11,106 @@ library(patchwork)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
+# allow external arguments to be passed from cmd line
+args <- commandArgs(trailingOnly = TRUE)
+if (length(args) == 0) {
+  print('No arguments passed, using defaults of Canada Farm, no bat grouping, and vb sampling')
+  location = 'Canada Farm'
+  batgroup = F
+  sampling = F
+  filename = system("date +%Y%m%d", intern = TRUE)
+
+} else {
+  location = args[1]
+  batgroup = as.logical(args[2])
+  sampling = as.logical(args[3])
+  }
+
+if (length(args) == 4) {#if a filename other than todays date is specified
+  filename = args[4]
+} else {
+  filename = system("date +%Y%m%d", intern = TRUE)
+
+}
+if (!dir.exists('output/')) {
+  dir.create('output/')
+}
+output_path = paste0('output/results_stan',
+                     ifelse(batgroup, '_batgrpd_', '_batspecies_'),
+                     gsub(' ', '_', location),
+                     ifelse(sampling, '_mcmc_', '_vb_'),
+                     filename,
+                     '.rds')
+
+
+# set up errors in case location or batgroup or sampling are not correctly specified
+if (!location %in% c('Canada Farm', 'Richmond Park')) {
+  stop('Invalid location specified. Please choose either "Canada Farm" or "Richmond Park"')
+}
+if (!is.logical(batgroup) || is.na(batgroup)) {
+  stop('Invalid batgroup specified. Please specify TRUE to group bat species, or FALSE to keep separate')
+  }
+if (!is.logical(sampling) || is.na(sampling)) {
+  stop('Invalid sampling specified. Please specify TRUE to run MCMC sampling, or FALSE for variational Bayes')
+}
+
+
+
+# COMMENT/UNCOMMENT BELOW TO CHANGE DATASETTINGS
+location = 'Richmond Park' # 'Canada Farm' or 'Richmond Park'
+batgroup = F# TRUE to group bat species, FALSE to keep separate
+sampling = F # TRUE to run MCMC sampling (slow), FALSE to run variational Bayes
+
+
 # data
 sd = read.csv("output/spatial_data_longform_withquant_speciesID.csv")
 siteinfo = read.csv("output/all_site_vars2.csv")
-
+# create habitat type var
+siteinfo = siteinfo %>%
+  mutate(Habitat_type = case_when(DominantLC_10m %in% c('Broadleaf woodland') ~ 'Closed',
+                                  DominantLC_10m %in% c('Improve grassland', 'Neutral grassland', 'Fen') ~ 'Open',
+                                  TRUE ~ 'Other'))
 # new sampleID
 sd$SampleIDrep = paste0(sd$SampleID, "_", sd$pcr_replicate)
+# threshold out detections below threshold
+# sum lib size of each sample
+libsizes = sd %>%
+  group_by(Sample) %>%
+  summarise(total_libsize = sum(read_count))
+libsizes$thresh = libsizes$total_libsize * 0.0005
+sd = sd %>%
+  left_join(libsizes, by = c("Sample")) %>%
+  filter(read_count >= thresh)
 
-
-# for now, just do canadafarm
-sd = sd %>% filter(Location == "Canada Farm")
-siteinfo = siteinfo %>% filter(Location == "Canada Farm") %>% droplevels()
+if (location == 'Canada Farm') {
+  sd = sd %>% filter(Location == "Canada Farm")
+  siteinfo = siteinfo %>% filter(Location == "Canada Farm") %>% droplevels()
+} else if (location == 'Richmond Park') {
+  sd = sd %>% filter(Location == "Richmond Park")
+  siteinfo = siteinfo %>% filter(Location == "Richmond Park") %>% droplevels()
+}
 # need to get data into correct format for model
 # this is a list of all data
 
 # to get number of ecological samples, we need to condense the siteinfo df.
+
+
 sites_ecol = siteinfo %>%
-  select(Point_ID, Visit, dist_m) %>%
+  select(Point_ID, Visit, dist_m, Habitat_type) %>%
   distinct()
 
+
+# include bat species or group together?
+if (batgroup) {
+  sd = sd %>%
+    mutate(SpeciesID = ifelse(Order == "Chiroptera", "Chiroptera", as.character(SpeciesID))) %>%
+    droplevels()
+}
 
 # for canada farm, there are 19 locations
 L = n_distinct(siteinfo$Point_ID)
 # 5 time points
-t = n_distinct(siteinfo$Visit)
+t = n_distinct(sd$Visit)
 # 3 temporal replicates
 # so n_ecol is not exactly L*T because some locations are missing replicates - AS has no data for visit 5
 n_ecol = nrow(sites_ecol)
@@ -61,20 +137,23 @@ n_ecol = nrow(sites_ecol)
 # [22] "a_p"             "b_p"             "a_q"             "b_q"             "a_theta0"        "b_theta0"        "lambda_prior"
 # for testing - lets subset to bat data only
 
-sd = sd %>% filter(Order == "Chiroptera") %>% droplevels()
+# To only run for bats
+# sd = sd %>% filter(Order == "Chiroptera") %>% droplevels()
 
-n = n_ecol #94
+
+n = n_ecol
 # n covariates = number of visits (minus reference value) + 1 for distance
-ncov_z = (t-1) + 1
+
 # order sites ecol by site then visit
 sites_ecol = sites_ecol %>%
   arrange(Point_ID, Visit)
-X_z <- model.matrix(~ factor(Visit) + dist_m - 1, sites_ecol)
+X_z <- model.matrix(~ factor(Visit) + dist_m + Habitat_type - 1, sites_ecol)
 # remove the first column (visit 1) as this is our reference value
 X_z <- X_z[,-1]
+ncov_z = ncol(X_z)
 # this is the number of samples in siteinfo
 # its not quite 285 because some samples are missing.
-N = nrow(siteinfo) # 273
+N = nrow(siteinfo)
 # for each ecological sample, how many temporal reps did we take?
 sites_M = siteinfo %>%
   group_by(Point_ID, Visit) %>%
@@ -109,8 +188,6 @@ X_theta <- as.matrix(x_theta_df[, c("t2m_c_mean",
 X_theta = scale(X_theta)
 ncov_theta = ncol(X_theta)
 
-# i'm not sure what this is, but it needs to be length n x N_covariates
-o_im = rep(0, N)
 
 im_idx <- rep(1:n_ecol, M)
 length(im_idx)# map field sample to technical replicate
@@ -128,12 +205,29 @@ sd_summ = sd %>%
   arrange(Point_ID, Visit, Night, pcr_replicate, SpeciesID) %>%
   ungroup()
 sd_summ2 = pivot_wider(sd_summ, names_from = SpeciesID, values_from = reads, values_fill = 0)
+
+# THIS NEEDS TO BE LOG + 1.
 logy1 = as.matrix(sd_summ2[, -(1:4)]) # remove first four columns which are not species data
+dim(logy1)
+# log all values
+logy1 = log(logy1 + 1)
+# remove columns with no detections (colSUm = 0)
+logy1 = logy1[, colSums(logy1) > 0]
+S = ncol(logy1) # update S to be number of species with detections
 # sample concentration
 sq_avg = sd %>%
   group_by(Point_ID, Visit, Night, SampleID) %>%
   summarise(biomassInSample = mean(PreIndexConcentration.ng.ul., na.rm = TRUE)) %>%
   arrange(Point_ID, Visit, Night)
+
+
+# o_im is the concentration measure for each sample
+o_im = exp(sq_avg$biomassInSample)
+# does not except NA values - convert to 0 concentration
+o_im[is.na(o_im)] = 0
+# this is the exponential!
+# should be one for each sample.
+
 biomassInSample = sq_avg$biomassInSample
 # the model does not support NA
 biomassInSample[is.na(biomassInSample)] = 0
@@ -174,7 +268,6 @@ stan_data <- list(n = n,
                   lambda_prior = lambda_start
 )
 # run mcmc?
-sampling = T
 stan_model_compiled <- stan_model(file = here("Code","code_new.stan"))
 stan_data$mu_mu0 <- 1
 stan_data$sd_mu0 <- 1
@@ -217,4 +310,5 @@ if(sampling){
       output_samples = 500,
       eta = 2)
 }
-saveRDS(results_stan, 'output/results_stan_250112_batsmcmc.rds')
+
+saveRDS(results_stan, output_path)
