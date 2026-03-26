@@ -56,12 +56,6 @@ if (!is.logical(sampling) || is.na(sampling)) {
 
 
 
-# COMMENT/UNCOMMENT BELOW TO CHANGE DATASETTINGS
-location = 'Richmond Park' # 'Canada Farm' or 'Richmond Park'
-batgroup = F# TRUE to group bat species, FALSE to keep separate
-sampling = F # TRUE to run MCMC sampling (slow), FALSE to run variational Bayes
-
-
 # data
 sd = read.csv("output/spatial_data_longform_withquant_speciesID.csv")
 siteinfo = read.csv("output/all_site_vars2.csv")
