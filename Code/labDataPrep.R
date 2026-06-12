@@ -2,30 +2,31 @@
 library(dplyr)
 library(tidyr)
 library(ggplot2)
-
+library(patchwork)
 
 # explanation of data files.
-# as of March 2026, the most up to date files i NatureAirSpatialCombined. This
+# as of March 2026, the most up to date file is NatureAirSpatialCombined. This
 # includes data from all visits, including RP V4 which was run in a later sequencing batch
 # so was not in the original data.
 # it is also different to NatureAir_16SmamSpatial_ALL as it has the corrected sample
-# that originally suggested there was a horseshoe bat in RP, which was due to a labelling mistake
+# that originally suggested there was a horseshoe bat in RP, which was due to a
+# labelling mistake
 
-# 'Spatial1' and 'Spatial2' represent data from the first sequencing batch and the second, respectively.
+# 'Spatial1' and 'Spatial2' represent data from the first sequencing batch and
+# the second, respectively.
 # Spatial2 only includes results from RP V4.
-# SpatialCombined is the combination of these two, and should be the most up to date file.
-sd = read.csv("Data/NatureAir_16SmamSpatial_ALL.csv")
+# SpatialCombined is the combination of these two, and should be the most up to
+# date file.
+# sd = read.csv("Data/NatureAir_16SmamSpatial_ALL.csv")
 Sd = read.delim2('Data/NatureAirSpatialCombined.txt')
-sd1 = read.delim2('Data/NatureAirSpatial1.txt')
-sd2 = read.delim2('Data/NatureAirSpatial2.txt')
+# sd1 = read.delim2('Data/NatureAirSpatial1.txt')
+# sd2 = read.delim2('Data/NatureAirSpatial2.txt')
 
 # difference in row numbers - there are 251 ASVs x 1506-15 samples in OG
 # there are 255 ASVs x 1496-15 samples in new.
 # need to work out which samples are different
 
-
 siteinfo = read.csv("output/allsitevars.csv")
-
 
 # fix typos
 siteinfo$SampleID[siteinfo$SampleID == "CFANN3V1" & siteinfo$Visit == 2] = "CFANN3V2"
@@ -37,7 +38,6 @@ siteinfo[163,]$SampleID = "RPASN1V1"
 siteinfo[164,]$SampleID = "RPANN1V1"
 siteinfo[164,]$Point_ID = "AN"
 
-
 # there are some weird points in siteinfo
 # CFAN1V5, CFAN2V5, CFAN3V5
 # CFAO is all accounted for, CFAS has nothing on visit 5, CFAN has no visit 5
@@ -46,28 +46,17 @@ siteinfo$SampleID[siteinfo$SampleID == "CFAN1V5"] = "CFANN1V5"
 siteinfo$SampleID[siteinfo$SampleID == "CFAN2V5"] = "CFANN2V5"
 siteinfo$SampleID[siteinfo$SampleID == "CFAN3V5"] = "CFANN3V5"
 
-
 # convert Sd to longform
 sd_long = pivot_longer(Sd, cols = 15:ncol(Sd), names_to = 'Sample', values_to = 'read_count')
 
-# which values of Samples are in sd_long but not in sd_long1?
-sd_long_samples = unique(sd_long$Sample)
-sd_longn_samples = unique(sd_longn$Sample)
-missing_sd_longn = sd_long_samples[!sd_long_samples %in% sd_longn_samples]
-# this is what is in the OG data and not the new data
-missing_sd_long = sd_longn_samples[!sd_longn_samples %in% sd_long_samples]
-# these are the samples that are in the new file but not the old
-
-
-# remvoe string from Sample column containing 'rep' followed by a number. Add the number to a new column called 'replicate'
+# remove string from Sample column containing 'rep' followed by a number. Add the number to a new column called 'replicate'
 sd_long = sd_long %>%
   mutate(pcr_replicate = as.numeric(gsub(".*rep(\\d+).*", "\\1", Sample))) %>%
   mutate(SampleID = gsub("rep\\d+", "", Sample))
-
-
+# warning that NAs are introduced is ok
 # to check - there are some mock community results that to not have PCR rep numbers. ignoring for now, these are NA
 
-# correct typo
+# correct typos
 sd_long$SampleID[grep("CFAAN1V2", sd_long$SampleID)] = "CFANN1V2"
 sd_long$SampleID[grep("CFAN1V5", sd_long$SampleID)] = "CFANN1V5"
 sd_long$SampleID[grep("CFAN2V5", sd_long$SampleID)] = "CFANN2V5"
@@ -79,8 +68,6 @@ sd_long$SampleID[grep("RPAS1N1V1", sd_long$SampleID)] = "RPASN1V1"
 sd_long$SampleID[grep("RPAS1N1V2", sd_long$SampleID)] = "RPASN1V2"
 sd_long$SampleID[grep("RPAS1N1V3", sd_long$SampleID)] = "RPASN1V3"
 
-
-
 # when Sample = "RPIN1V3rep1.1", change PCR rep to 3 and sample id to "RPIN1V3"
 sd_long$SampleID[sd_long$Sample == "RPIN1V3rep1.1"] = "RPIN1V3"
 sd_long$pcr_replicate[sd_long$Sample == "RPIN1V3rep1.1"] = 3
@@ -89,14 +76,8 @@ sd_long$pcr_replicate[sd_long$Sample == "RPIN1V3rep1.1"] = 3
 # sd_long$SampleID[sd_long$Sample == "CFLN1V2rep2.1"] = "CFLN1V2"
 # sd_long$pcr_replicate[sd_long$Sample == "CFLN1V2rep2.1"] = 3
 
-# no longer a problem in new data
-# # remove CFBN3V2rep3.1 - this does not have any positive detections so seems to be a mistake
-# sd_long = sd_long %>%
-#   filter(Sample != "CFBN3V2rep3.1")
-
 # join with metadata from siteinfo
 sd_long1 = left_join(sd_long, siteinfo, by = c("SampleID" = "SampleID"), relationship = "many-to-many")
-
 
 # check which samples did not line up.
 mismatch = sd_long1 %>%
@@ -243,13 +224,15 @@ cfds = bat_detections %>% filter(bat_detections$Location=='Canada Farm' & bat_de
   scale_fill_manual(values = colour_pal, breaks = names(colour_pal[-1]), drop = FALSE) +
   facet_wrap(~month, nrow = 1) +
   theme_minimal() +
-  labs(title = "Bat Detections at Canada Farm", x = "Site ID", y = "Species ID", fill = "Total Reads") +
+  labs(title = "a)", x = "Site ID", y = "Species ID", fill = "Total Reads") +
   theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
         panel.grid.major = element_blank(),
         text = element_text(size = 16),
         legend.text = element_text(size = 8),
         legend.title = element_text(size = 10),
-        axis.text.y = element_text(face = 'italic')
+        axis.text.y = element_text(face = 'italic'),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank()
         ) +
   geom_hline(yintercept = 1.5, color = "grey", size = 0.5) +
   geom_hline(yintercept = 2.5, color = "grey", size = 0.5) +
@@ -260,14 +243,15 @@ cfds = bat_detections %>% filter(bat_detections$Location=='Canada Farm' & bat_de
   geom_hline(yintercept = 7.5, color = "grey", size = 0.5) +
   geom_vline(xintercept = 3.5, color = "grey", size = 0.5, linetype = 'dashed') +
   geom_vline(xintercept = 11.5, color = "grey", size = 0.5, linetype ='dashed') +
-  geom_vline(xintercept = 15.5, color = "grey", size = 0.5, linetype ='dashed') +
-  annotate("text", x = 3, y = 8.4, label = "0m") +
-  annotate("text", x = 10.5, y = 8.4, label = "50m") +
-  annotate("text", x = 14.5, y = 8.4, label = '100m') +
-  annotate("text", x = 18.5, y = 8.4, label = '150m')
+  geom_vline(xintercept = 15.5, color = "grey", size = 0.5, linetype ='dashed')
+  # annotate("text", x = 3, y = 8.4, label = "0m") +
+  # annotate("text", x = 10.5, y = 8.4, label = "50m") +
+  # annotate("text", x = 14.5, y = 8.4, label = '100m') +
+  # annotate("text", x = 18.5, y = 8.4, label = '150m')
 
-
+cfds
 # we need to add an invisible value to a sample in richmond park v3 and v4 so these appear on the figure
+# TO DO: change level order of POint_ID and workout out why N is not being included.
 
 rpds = bat_detections %>% filter(bat_detections$Location=='Richmond Park' & bat_detections$rp_include==TRUE) %>%
   ggplot(aes(x = Point_ID, y = SpeciesID, fill = read_bin)) +
@@ -275,13 +259,15 @@ rpds = bat_detections %>% filter(bat_detections$Location=='Richmond Park' & bat_
   scale_fill_manual(values = colour_pal, breaks = names(colour_pal[-1])) +
   facet_wrap(~month, nrow = 1) +
   theme_minimal() +
-  labs(title = "Bat Detections at Richmond Park", x = "Site ID", y = "Species ID", fill = "Total Reads") +
+  labs(title = "b)", x = "Site ID", y = "Species ID", fill = "Total Reads") +
   theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
         panel.grid.major = element_blank(),
         text = element_text(size = 16),
         axis.text.y = element_text(face = 'italic'),
         legend.text = element_text(size = 8),
-        legend.title = element_text(size = 10)
+        legend.title = element_text(size = 10),
+        # axis.text.x = element_blank(),
+        axis.title.x = element_blank()
   )+
   geom_hline(yintercept = 1.5, color = "grey", size = 0.5) +
   geom_hline(yintercept = 2.5, color = "grey", size = 0.5) +
@@ -290,12 +276,13 @@ rpds = bat_detections %>% filter(bat_detections$Location=='Richmond Park' & bat_
   geom_hline(yintercept = 5.5, color = "grey", size = 0.5) +
   geom_vline(xintercept = 3.5, color = "grey", size = 0.5, linetype = 'dashed') +
   geom_vline(xintercept = 10.5, color = "grey", size = 0.5, linetype ='dashed') +
-  geom_vline(xintercept = 13.5, color = "grey", size = 0.5, linetype ='dashed') +
-  annotate("text", x = 3, y = 6.4, label = "0m") +
-  annotate("text", x = 10, y = 6.4, label = "50m") +
-  annotate("text", x = 12.5, y = 6.4, label = '100m') +
-  annotate("text", x = 15.5, y = 6.4, label = '150m')
+  geom_vline(xintercept = 13.5, color = "grey", size = 0.5, linetype ='dashed')
+  # annotate("text", x = 3, y = 6.4, label = "0m") +
+  # annotate("text", x = 10, y = 6.4, label = "50m") +
+  # annotate("text", x = 12.5, y = 6.4, label = '100m') +
+  # annotate("text", x = 15.5, y = 6.4, label = '150m')
 
+rpds
 cfds + rpds + plot_layout(nrow = 2, guides = 'collect')
 
 library(ggh4x)
@@ -548,3 +535,153 @@ table(sd_long4$Habitat_type)
 
 write.csv(sd_long4, "output/spatial_data_longform_withquant_speciesID.csv", row.names = FALSE)
 write.csv(siteinfo, "output/all_site_vars2.csv", row.names = FALSE)
+
+
+#
+
+# Bat specific primer -----------------------------------------------------
+
+batsd = read.delim2('Data/NatureAirBats.txt')
+# there are 510 ASVs!
+bats_long = pivot_longer(batsd, cols = 15:ncol(batsd), names_to = 'Sample',
+                         values_to = 'read_count')
+
+
+# seperate by _, choose second option
+bats_long$SampleID = sapply(strsplit(bats_long$Sample, "_"), function(x) x[2])
+# sometimes the reps have been named weirdly i.e rep1_2. we need to parse these
+# out
+bats_long$pcr_replicate = gsub("_RD(\\d+).*", "", bats_long$Sample)
+bats_long$pcr_replicate = gsub("ZG0006223_", "", bats_long$pcr_replicate)
+# bats_long$pcr_replicate = gsub("_", ".", bats_long$pcr_replicate)
+bats_long$pcr_replicate = gsub('r', "R", bats_long$pcr_replicate)
+bats_long$pcr_replicate = gsub(".*Rep", "", bats_long$pcr_replicate)
+
+
+# filter all samples that have a . in the pcr_replicate column -
+# these are the ones that have been named weirdly and need to be fixed
+probreps = bats_long[grepl("_", bats_long$pcr_replicate),]
+unique(probreps$SampleID)
+# kate confirmed that these samples had 4 PCR replicates.
+unique(probreps$pcr_replicate)
+
+teste = bats_long[grepl("CFNN1V4", bats_long$SampleID),]
+unique(teste$pcr_replicate)
+# for this case, '3_1 should be '3' and '3_2' should be 4
+teste = bats_long[grepl("CFON1V4", bats_long$SampleID),]
+unique(teste$pcr_replicate)
+table(teste$pcr_replicate)
+# there are equal row numbers for each replicate, so even though there are 6
+# this would suggest that there are actually 6 replicates.
+# so '1_1' is 1, '1_2' is 2, '2_1' is 3, '2_2' is 4, '3_1' is 5, and '3_2' is 6.
+teste = bats_long[grepl("CFPN1V4", bats_long$SampleID),]
+unique(teste$pcr_replicate)
+# here there are five.
+#  1 is 1, 2_1 is 2, 2_2 is 3, 3_1 is 4, and 3_2 is 5.
+
+bats_long = bats_long %>%
+  mutate(pcr_replicate = case_when(
+    grepl("CFNN1V4", SampleID) & pcr_replicate == "3_1" ~ "3",
+    grepl("CFNN1V4", SampleID) & pcr_replicate == "3_2" ~ "4",
+    grepl("CFON1V4", SampleID) & pcr_replicate == "1_1" ~ "1",
+    grepl("CFON1V4", SampleID) & pcr_replicate == "1_2" ~ "2",
+    grepl("CFON1V4", SampleID) & pcr_replicate == "2_1" ~ "3",
+    grepl("CFON1V4", SampleID) & pcr_replicate == "2_2" ~ "4",
+    grepl("CFON1V4", SampleID) & pcr_replicate == "3_1" ~ "5",
+    grepl("CFON1V4", SampleID) & pcr_replicate == "3_2" ~ "6",
+    grepl("CFPN1V4", SampleID) & pcr_replicate == "2_1" ~ "2",
+    grepl("CFPN1V4", SampleID) & pcr_replicate == "2_2" ~ "3",
+    grepl("CFPN1V4", SampleID) & pcr_replicate == "3_1" ~ "4",
+    grepl("CFPN1V4", SampleID) & pcr_replicate == "3_2" ~ "5",
+    TRUE ~ pcr_replicate
+  ))
+
+unique(bats_long$pcr_replicate)
+
+# remove string from Sample column containing 'rep' followed by a number.
+# Add the number to a new column called 'replicate'
+bats_long$SampleID = gsub('r', "R", bats_long$SampleID)
+bats_long = bats_long %>%
+  mutate(SampleID = gsub("Rep\\d+", "", SampleID))
+
+
+# CFAN1V5 CFAN2V5 CFAN3V5
+# there is no V5 for AS or AN, Kate confirmed only one 'A' sample was taken for this visit
+# relabelling as AN so it is easier to link to site info, as i did above.
+bats_long$SampleID[grep("CFAN1V5", bats_long$SampleID)] = "CFANN1V5"
+bats_long$SampleID[grep("CFAN2V5", bats_long$SampleID)] = "CFANN2V5"
+bats_long$SampleID[grep("CFAN3V5", bats_long$SampleID)] = "CFANN3V5"
+
+# "CFBNN2V1" - this could be CFBN2V1 rep3 or CFNNN2V1 rep3.. both seem to be missing.
+# relabelling as CFB for now.
+bats_long$SampleID[grep("CFBNN2V1", bats_long$SampleID)] = "CFBN2V1"
+bats_long$SampleID[grep("CFFEN2V1", bats_long$SampleID)] = "CFEN2V1"
+bats_long$SampleID[grep('CFO3V1', bats_long$SampleID)] = "CFON3V1"
+
+# left join with site_info
+# join with metadata from siteinfo
+bats_long1 = left_join(bats_long, siteinfo, by = c("SampleID" = "SampleID"), relationship = "many-to-many")
+
+# check which samples did not line up.
+mismatch = bats_long1 %>%
+  filter(is.na(Point_ID)) %>%
+  filter(!grepl("Mock", SampleID)) %>% #not interested in mock community
+  filter(!grepl("EBA|EBT", SampleID)) # not interested in extraction blanks
+
+unique(mismatch$SampleID)
+
+# do all the rows in siteinfo match up with something?
+siteinfo_ids = unique(siteinfo$SampleID[siteinfo$Location=="Canada Farm"])
+sd_ids = unique(bats_long$SampleID)
+
+missing_ids = siteinfo_ids[!siteinfo_ids %in% sd_ids] #these are the samples
+# that are in siteinfo but not in the bats_long dataset.
+unmatches = sd_ids[!sd_ids %in% siteinfo_ids]
+# these are samples that we collected but are not in siteinfo - all mocks
+
+# sort out species ID. These will need to match up with categories from
+# the main dataset.
+unique(bats_long1$Species)
+bats_sp_list = unique(bats_long1[,c('NMSeqID',"Class", "Order",'Family','Genus','Species', "Status")])
+
+# lets group some of these together.
+bats_sp_list$SpeciesID = ifelse(bats_sp_list$Species != "", bats_sp_list$Species, bats_sp_list$Genus)
+bats_sp_list$SpeciesID = ifelse(bats_sp_list$SpeciesID != "", bats_sp_list$SpeciesID, bats_sp_list$Family)
+
+
+bats_sp_list$SpeciesID[bats_sp_list$Status == 'Contaminant'] = "Contaminant"
+bats_sp_list$SpeciesID[bats_sp_list$Status== "Unassigned"] = "Unassigned"
+
+# but, we want to keep cows separate because there are actually cows in the area
+bats_sp_list$SpeciesID[bats_sp_list$Genus== "Bos"] = "Bos taurus" #cow
+
+unique(bats_sp_list$SpeciesID)
+unique(species_list$SpeciesID)
+# in the previous dataset, all bird species are grouped together
+
+bats_sp_list$SpeciesID[bats_sp_list$Status== "NUMT"] = "Contaminant"
+bats_sp_list$SpeciesID[bats_sp_list$Class == 'Aves'] = "Bird"
+bats_sp_list$SpeciesID[bats_sp_list$Genus == 'Pipistrellus'] = "Pipistrellus spp."
+bats_sp_list$SpeciesID[bats_sp_list$Genus == 'Myotis'] = "Myotis spp."
+bats_sp_list$SpeciesID[bats_sp_list$SpeciesID == "Scardinius erythrophthalmus"] = "Fish"
+bats_sp_list$SpeciesID[bats_sp_list$SpeciesID == "Cyprinidae"] = "Fish"
+bats_sp_list$SpeciesID[bats_sp_list$SpeciesID == "Salmo salar"] = "Fish"
+bats_sp_list$SpeciesID[bats_sp_list$Class == "Amphibia"] = "Amphibian"
+# Mustelidae
+bats_sp_list$SpeciesID[bats_sp_list$Family == "Mustelidae"] = "Mustelidae"
+bats_sp_list$SpeciesID[bats_sp_list$Family=='Cervidae'] = "Cervidae"
+# small mammals - hedgehog, rabbit, rodents, Soricomorpha (shrews),
+bats_sp_list$SpeciesID[bats_sp_list$Order %in% c('Erinaceomorpha', "Lagomorpha", "Rodentia", 'Soricomorpha')] = "Small Mammal"
+# "Aporrectodea"  #Invertebrate - earth worm
+bats_sp_list$SpeciesID[bats_sp_list$SpeciesID == "Aporrectodea"] = "Earthworm"
+# "Sabellaria"  marine polychaete worm  #contaminant
+bats_sp_list$SpeciesID[bats_sp_list$SpeciesID == "Sabellaria"] = "Contaminant"
+# "Helophilus pendulus" hover fly
+
+bats_sp_list[bats_sp_list$SpeciesID == "",] #synthetic
+bats_sp_list$SpeciesID[bats_sp_list$SpeciesID == ""] = "Synthetic"
+
+bats_sp_list[bats_sp_list$SpeciesID == "Vulpes",] #this can only be red fox in UK
+bats_sp_list$SpeciesID[bats_sp_list$SpeciesID == "Vulpes"] = "Vulpes vulpes"
+
+
