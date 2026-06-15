@@ -55,9 +55,9 @@ if (!is.logical(sampling) || is.na(sampling)) {
 }
 
 
-
 # data
 sd = read.csv("output/spatial_data_longform_withquant_speciesID.csv")
+batssd = read.csv('output/bat_primer_longform_withquant_speciesID.csv')
 siteinfo = read.csv("output/all_site_vars2.csv")
 # create habitat type var
 siteinfo = siteinfo %>%
@@ -66,6 +66,7 @@ siteinfo = siteinfo %>%
                                   TRUE ~ 'Other'))
 # new sampleID
 sd$SampleIDrep = paste0(sd$SampleID, "_", sd$pcr_replicate)
+batssd$SampleIDrep = paste0(batssd$SampleID, "_", batssd$pcr_replicate)
 # threshold out detections below threshold
 # sum lib size of each sample
 libsizes = sd %>%
@@ -75,6 +76,14 @@ libsizes$thresh = libsizes$total_libsize * 0.0005
 sd = sd %>%
   left_join(libsizes, by = c("Sample")) %>%
   filter(read_count >= thresh)
+libsizesb = batssd %>%
+  group_by(Sample) %>%
+  summarise(total_libsize = sum(read_count))
+libsizesb$thresh = libsizesb$total_libsize * 0.0005
+batssd = batssd %>%
+  left_join(libsizesb, by = c("Sample")) %>%
+  filter(read_count >= thresh)
+
 
 if (location == 'Canada Farm') {
   sd = sd %>% filter(Location == "Canada Farm")
@@ -87,16 +96,16 @@ if (location == 'Canada Farm') {
 # this is a list of all data
 
 # to get number of ecological samples, we need to condense the siteinfo df.
-
-
 sites_ecol = siteinfo %>%
   select(Point_ID, Visit, dist_m, Habitat_type) %>%
   distinct()
 
-
 # include bat species or group together?
 if (batgroup) {
   sd = sd %>%
+    mutate(SpeciesID = ifelse(Order == "Chiroptera", "Chiroptera", as.character(SpeciesID))) %>%
+    droplevels()
+  batssd = batssd %>%
     mutate(SpeciesID = ifelse(Order == "Chiroptera", "Chiroptera", as.character(SpeciesID))) %>%
     droplevels()
 }
@@ -160,13 +169,24 @@ sites_K = sd %>%
   group_by(Point_ID, Visit, Night) %>%
   summarise(K = n_distinct(pcr_replicate)) %>%
   arrange(Point_ID, Visit, Night)
+sites_Kbats = batssd %>%
+  group_by(Point_ID, Visit, Night) %>%
+  summarise(K = n_distinct(pcr_replicate)) %>%
+  arrange(Point_ID, Visit, Night)
+# add these together
+if (location == 'Canada Farm') {
+  sites_K = sites_K %>%
+    left_join(sites_Kbats, by = c("Point_ID", "Visit", "Night"), suffix = c("", "_bats")) %>%
+    mutate(K = K + K_bats) %>%
+    select(-K_bats)
+}
 K <- sites_K$K
 length(K)
 N
 # length K and N should be the same length.
 
 #PCR replicates per replicate sample
-N2 = n_distinct(sd$SampleIDrep) # 817
+N2 = n_distinct(sd$SampleIDrep) + n_distinct(batssd$SampleIDrep) # 819 + 774
 sumM <- c(0, cumsum(M)[-n])
 sumK <- c(0, cumsum(K)[-N])
 
@@ -182,13 +202,21 @@ X_theta <- as.matrix(x_theta_df[, c("t2m_c_mean",
 X_theta = scale(X_theta)
 ncov_theta = ncol(X_theta)
 
-
 im_idx <- rep(1:n_ecol, M)
 length(im_idx)# map field sample to technical replicate
 
 # number of species
-S = n_distinct(sd$SpeciesID)
-S_star = 0
+if (location == 'Canada Farm') {
+  mamspec = unique(sd$SpeciesID)
+  batspec = unique(batssd$SpeciesID)
+  speciesIDs = c(mamspec, batspec)
+  speciesIDs = unique(speciesIDs)
+  S = length(speciesIDs)
+  S_star = 0
+  } else {
+    S = n_distinct(sd$SpeciesID)
+    S_star = 0
+}
 
 # data frame of read count data.
 # each column is a species, each row is a sample
@@ -198,7 +226,26 @@ sd_summ = sd %>%
   summarise(reads = sum(read_count)) %>%
   arrange(Point_ID, Visit, Night, pcr_replicate, SpeciesID) %>%
   ungroup()
-sd_summ2 = pivot_wider(sd_summ, names_from = SpeciesID, values_from = reads, values_fill = 0)
+batsd_summ = batssd %>%
+  group_by(Point_ID, Visit, Night, pcr_replicate, SpeciesID) %>%
+  summarise(reads = sum(read_count)) %>%
+  arrange(Point_ID, Visit, Night, pcr_replicate, SpeciesID) %>%
+  ungroup()
+nrow(sd_summ)
+head(batsd_summ)
+# we need to change the PCR replicate number of batsSD so they continue on from the last number of sd_summ
+sdreps = sd_summ %>%
+  group_by(Point_ID, Visit, Night) %>%
+  summarise(max_pcr = max(pcr_replicate)) %>%
+  ungroup()
+# there are always 3 replicates in sd summ.
+batsd_summ = batsd_summ %>%
+  mutate(pcr_replicate = pcr_replicate + 3)
+
+allsd_summ = bind_rows(sd_summ, batsd_summ) %>%
+  arrange(Point_ID, Visit, Night, pcr_replicate, SpeciesID)
+
+sd_summ2 = pivot_wider(allsd_summ, names_from = SpeciesID, values_from = reads, values_fill = 0)
 
 # THIS NEEDS TO BE LOG + 1.
 logy1 = as.matrix(sd_summ2[, -(1:4)]) # remove first four columns which are not species data
