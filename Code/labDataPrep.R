@@ -450,12 +450,12 @@ sd_long3 %>%
 
 # we also need to add in the missing samples. these are samples that are in siteinfo but not in sd_long3.
 # for every species, need to give a 0 value.
-# most of missing id is richmond park V4 which we don't have results for yet.
 # convert to include PCR reps
 # from missing ids, the CF samples arev not in sd or sq.
 # RPKN2V4, RPANN3V4, RPASN3V4, are in SQ and have NA values for concentration
 # RPPN3V4 has conc values in Sq but is not in sd.
-missing_ids2 = c(paste0(missing_ids, "rep1"), paste0(missing_ids, "rep2"), paste0(missing_ids, "rep3"))
+missing_ids2 = c(paste0(missing_ids, "rep1"), paste0(missing_ids, "rep2"),
+                 paste0(missing_ids, "rep3"))
 missing_sd
 # remove extraction blanks
 missing_sd = missing_sd[!grepl("CFEB", missing_sd)]
@@ -475,8 +475,6 @@ missing_sq[,4:7] = NA
 # therefore, a row for CFANN1V5rep3 needs to be added.
 # the best way to do this is changing the value in missing_sd.
 missing_sd[grep("CFAN1V5rep3", missing_sd)] = "CFANN1V5rep3"
-
-
 
 sd_long4 = sd_long3
 for(i in 1:length(missing_sd)){
@@ -538,7 +536,7 @@ write.csv(siteinfo, "output/all_site_vars2.csv", row.names = FALSE)
 
 
 #
-
+sd_long4$primer = 'Mam16S'
 # Bat specific primer -----------------------------------------------------
 
 batsd = read.delim2('Data/NatureAirBats.txt')
@@ -685,3 +683,143 @@ bats_sp_list[bats_sp_list$SpeciesID == "Vulpes",] #this can only be red fox in U
 bats_sp_list$SpeciesID[bats_sp_list$SpeciesID == "Vulpes"] = "Vulpes vulpes"
 
 
+# combine speices ID with sample data
+# also combine quant data
+# join sq1 with sd_long1 by Sample and MiseqRunID
+
+# we cannot connect quant data directly with reps as they come from different samples.
+# so instead we will just put averages from each sample and connect them
+
+
+# do all sq1 samples match up with bats_long2?
+sq1samples = unique(sq1$Sample.ID[grepl("CF", sq1$Sample.ID)])
+bats_long1samples = unique(bats_long1$SampleID)
+
+# what samples are in sq1 but not bats_long?
+# this means that there are samples that were quanted but not metabarcoded.
+missing_sq1 = sq1samples[!sq1samples %in% bats_long1samples]
+# what samples are in bats_long but not sq?
+# this means there is probably a miss-labelled sample.
+mssing_bats = bats_long1samples[!bats_long1samples %in% sq1samples] #just mocks
+# just the ANs V5
+sq1$Sample.ID[grepl("CFAN1", sq1$Sample.ID)] = 'CFANN1V5'
+sq1$Sample.ID[grepl("CFAN2", sq1$Sample.ID)] = 'CFANN2V5'
+sq1$Sample.ID[grepl("CFAN3", sq1$Sample.ID)] = 'CFANN3V5'
+sq1$Sample.ID = gsub('CFAA', 'CFAN', sq1$Sample.ID)
+
+# combine quant data with bats_long1
+# get average quant data for each sample
+sq1_avg = sq1 %>%
+  group_by(Sample.ID) %>%
+  summarise(PreIndexConcentration.ng.ul. = mean(PreIndexConcentration.ng.ul., na.rm = TRUE))
+
+
+bats_long2 = left_join(bats_long1, sq1_avg, by = c("SampleID" = "Sample.ID"), relationship = "many-to-many")
+
+# change !Value to 0 - this is where the concentration was too low to estimate
+bats_long2$PreIndexConcentration.ng.ul.[bats_long2$PreIndexConcentration.ng.ul.=="NaN"] = 0
+bats_long2$PreIndexConcentration.ng.ul. = as.numeric(bats_long2$PreIndexConcentration.ng.ul.)
+
+
+names(sd_long4)
+names(bats_long2)
+sd_long4$MiseqNo.[2]
+
+bats_long2$MiseqNo = NA
+
+# add SpeciesID
+
+bats_long3 = left_join(bats_long2, bats_sp_list[,c('NMSeqID','SpeciesID')], by = c("NMSeqID" = "NMSeqID"), relationship = "many-to-many")
+names(sd_long4)
+names(bats_long3)
+
+bats_long3$primer = 'Bat'
+
+# need to add information from missing samples - those that were analyses but got 0 DNA
+
+# we also need to add in the missing samples. these are samples that are in siteinfo but not in sd_long3.
+# for every species, need to give a 0 value.
+# convert to include PCR reps
+# from missing ids, the CF samples are not in sd or sq.
+
+# those that are in site info but not in the metabarcoding data are:
+missing_ids2 = c(paste0(missing_ids, "rep1"), paste0(missing_ids, "rep2"),
+                 paste0(missing_ids, "rep3"))
+# those that are in sq but not in metabarcoding are:
+missing_sq1
+# remove extraction blanks
+missing_sq1 = missing_sq1[!grepl("CFEB", missing_sq1)]
+# add rep numbers
+missing_sq2 = c(paste0(missing_sq1, "rep1"), paste0(missing_sq1, "rep2"),
+                 paste0(missing_sq1, "rep3"))
+
+
+missing_sd = c(missing_ids2, missing_sq2)
+
+missing_sample = unique(bats_long3[,1:14])
+
+names(bats_long3)
+missing_sq = sq_avg[1,] #we only care about preIndexConcentration.ng.ul.
+missing_sq[,4] = NA
+
+
+bats_long4 = bats_long3
+bats_long4$pcr_replicate = as.numeric(bats_long4$pcr_replicate)
+# remove OG sample and miseqno columns
+bats_long4 = bats_long4 %>%
+  select(-c(OGsample, MiseqNo)) %>%
+  rename(biomassInSample = PreIndexConcentration.ng.ul.)
+
+for(i in 1:length(missing_sd)){
+  # remove rep
+  sampleid = gsub("rep\\d+", "", missing_sd[i])
+  missing_sample_temp = missing_sample %>%
+    mutate(Sample = missing_sd[i],
+           read_count = 0,
+           SampleID = sampleid,
+           pcr_replicate = as.numeric(gsub(".*rep(\\d+).*", "\\1", missing_sd[i]))
+           )
+  temp = siteinfo %>%
+    filter(SampleID == sampleid)
+
+  temp2 = left_join(missing_sample_temp, temp, by = 'SampleID')
+
+  # add sq data - again we just do the average for the sample, not the rep.
+  sq_temp = sq_avg %>%
+    filter(SampleID == sampleid)
+  if (nrow(sq_temp) > 0) { #if there is data for this sample in sq..
+    temp2$biomassInSample = sq_temp$biomassInSample
+#     if its NA make it 0 instead
+    temp2$biomassInSample[is.na(temp2$biomassInSample)] = 0
+    temp2$biomassInSample = as.numeric(temp2$biomassInSample)
+
+  } else {
+    sq_temp = missing_sq
+    temp2$biomassInSample = sq_temp$biomassInSample
+  }
+  temp3 = left_join(temp2, bats_sp_list[,c('NMSeqID','SpeciesID')], by = c("NMSeqID" = "NMSeqID"))
+  temp3$primer = 'Bat'
+  bats_long4 = rbind(bats_long4, temp3)
+}
+
+siteinfo_ids = unique(siteinfo$SampleID)
+sd_ids = unique(bats_long4$SampleID)
+sq_ids = unique(sq1$Sample.ID)
+sdsq_ids = unique(bats_long4$SampleID)
+# which samples in sd_long are missing from sq_ids?
+missing = sdsq_ids[!sdsq_ids %in% sq_ids]
+
+# remove mocks
+bats_long4 = bats_long4 %>%
+  filter(!grepl("Mock", SampleID))
+
+write.csv(bats_long4, "output/bat_primer_longform_withquant_speciesID.csv", row.names = FALSE)
+
+
+
+# there is a sample thats in bat primer but not sd.
+batssams = unique(bats_long4$SampleID)
+sd_sams = unique(sd_long4$SampleID[sd_long4$Location == "Canada Farm"])
+length(batssams)
+# which samples are in bats but not sd?
+sdmissings = batssams[!batssams %in% sd_sams]
