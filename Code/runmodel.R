@@ -55,6 +55,7 @@ if (!is.logical(sampling) || is.na(sampling)) {
 }
 
 
+
 # data
 sd = read.csv("output/spatial_data_longform_withquant_speciesID.csv")
 batssd = read.csv('output/bat_primer_longform_withquant_speciesID.csv')
@@ -73,9 +74,16 @@ libsizes = sd %>%
   group_by(Sample) %>%
   summarise(total_libsize = sum(read_count))
 libsizes$thresh = libsizes$total_libsize * 0.0005
+
+# need to group by speciesID and use summed read counts to filter agains
+sdmain = sd
 sd = sd %>%
+  group_by(Location, Point_ID, Visit, Night,SampleID, Sample, pcr_replicate, SpeciesID, ) %>%
+  summarise(read_count = sum(read_count)) %>%
   left_join(libsizes, by = c("Sample")) %>%
   filter(read_count >= thresh)
+sd$SampleIDrep = paste0(sd$SampleID, "_", sd$pcr_replicate)
+
 libsizesb = batssd %>%
   group_by(Sample) %>%
   summarise(total_libsize = sum(read_count))
@@ -109,6 +117,34 @@ if (batgroup) {
     mutate(SpeciesID = ifelse(Order == "Chiroptera", "Chiroptera", as.character(SpeciesID))) %>%
     droplevels()
 }
+remove_contaminants = T
+if (remove_contaminants) {
+  all_samples = unique(sd$Sample)
+  sd1 = sd
+  sd = sd %>%
+    filter(!SpeciesID %in% c("Contaminant", "Synthetic", "Unassigned")) %>%
+    droplevels()
+  missing_samples = all_samples[!all_samples %in% unique(sd$Sample)]
+  #extract rows from sd1 that are in missing_samples and add them back to sd
+  missing_df = sd1 %>%
+    filter(Sample %in% missing_samples) %>%
+    group_by(Point_ID, Visit, Night, SampleID, Sample, pcr_replicate) %>%
+    #select 1 row
+    slice(1)
+  missing_df$SpeciesID = "Bird"
+  missing_df$read_count = 0
+  #add back to sd
+  sd = bind_rows(sd, missing_df)
+
+  batssd = batssd %>%
+    filter(!SpeciesID %in% c("Contaminant", "Synthetic", "Unassigned")) %>%
+    droplevels()
+}
+table(sd$Sample, sd$SpeciesID)
+# add back in the samples that are now missing
+unique(siteinfo$SampleID) %in% unique(sd$SampleID)
+# how many rows for each sample
+table(sd$Sample)
 
 # for canada farm, there are 19 locations
 L = n_distinct(siteinfo$Point_ID)
@@ -142,7 +178,6 @@ n_ecol = nrow(sites_ecol)
 
 # To only run for bats
 # sd = sd %>% filter(Order == "Chiroptera") %>% droplevels()
-
 
 n = n_ecol
 # n covariates = number of visits (minus reference value) + 1 for distance
@@ -186,9 +221,13 @@ N
 # length K and N should be the same length.
 
 #PCR replicates per replicate sample
-N2 = n_distinct(sd$SampleIDrep) + n_distinct(batssd$SampleIDrep) # 819 + 774
-sumM <- c(0, cumsum(M)[-n])
-sumK <- c(0, cumsum(K)[-N])
+if (location == 'Canada Farm') {
+  N2 = n_distinct(sd$SampleIDrep) + n_distinct(batssd$SampleIDrep) # 819 + 774
+} else {
+  N2 = n_distinct(sd$SampleIDrep)
+ }
+sumM <- c(0, cumsum(M)[-n])#cumulative count of temporal replicates
+sumK <- c(0, cumsum(K)[-N]) #cumulative count of technical replicates
 
 # needs to ordered the same as other dataframes
 x_theta_df = siteinfo %>%
@@ -242,10 +281,14 @@ sdreps = sd_summ %>%
 batsd_summ = batsd_summ %>%
   mutate(pcr_replicate = pcr_replicate + 3)
 
-allsd_summ = bind_rows(sd_summ, batsd_summ) %>%
+if (location == 'Canada Farm') {
+  allsd_summ = bind_rows(sd_summ, batsd_summ) %>%
   arrange(Point_ID, Visit, Night, pcr_replicate, SpeciesID)
+  sd_summ2 = pivot_wider(allsd_summ, names_from = SpeciesID, values_from = reads, values_fill = 0)
+} else {
+  sd_summ2 = pivot_wider(sd_summ, names_from = SpeciesID, values_from = reads, values_fill = 0)
+}
 
-sd_summ2 = pivot_wider(allsd_summ, names_from = SpeciesID, values_from = reads, values_fill = 0)
 
 # THIS NEEDS TO BE LOG + 1.
 logy1 = as.matrix(sd_summ2[, -(1:4)]) # remove first four columns which are not species data
@@ -256,11 +299,11 @@ logy1 = log(logy1 + 1)
 logy1 = logy1[, colSums(logy1) > 0]
 S = ncol(logy1) # update S to be number of species with detections
 # sample concentration
-sq_avg = sd %>%
+sq_avg = sdmain %>%
+  filter(Location == location) %>%
   group_by(Point_ID, Visit, Night, SampleID) %>%
   summarise(biomassInSample = mean(PreIndexConcentration.ng.ul., na.rm = TRUE)) %>%
   arrange(Point_ID, Visit, Night)
-
 
 # o_im is the concentration measure for each sample
 o_im = exp(sq_avg$biomassInSample)

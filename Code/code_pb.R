@@ -46,7 +46,7 @@ tau_true <- rep(.5, S) #this determines the variation or level of noise within s
 phi_true <- rep(1, S) # response of the occupancy probability to the biomass
 sigma_true <- rep(0.02, S) #variation across samples
 sigma_y_true <- rep(0.5, S) #variation across samples
-beta0_theta_true <- rep(3, S) # baseline detection rate
+beta0_theta_true <- rep(3, S) # baseline detection rate change. 3 is very high close to 99% this to -1 to get very low detection rate.
 sigma_u_true <- 0.05 # PCR noise
 lambda_true <- rnorm(S + S_star, mean = 20, sd = 1)
 p_true <- c(rep(.95, S), rep(1, S_star))
@@ -77,7 +77,7 @@ stan_data$sd_mu0 <- 1
 
 stan_model_compiled <- stan_model(file = here("Code","code_new.stan"))
 
-sampling <- T
+sampling <- F
 
 # init_fun <- function() {
 #   list(
